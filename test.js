@@ -126,3 +126,12 @@ assert.match(ovCredit, /CC BY-SA 4\.0/);
 const ovNc = m.parseOpenversePage({ ...ovItem, id: 'ov-nc', license: 'by-nc' });
 assert.strictEqual(m.filterCandidate(ovNc).pass, false, 'Openverse NC rejected');
 console.log('Openverse fallback checks passed.');
+
+// Guard against retired text model models/gemini-2.5-flash in workflow definitions.
+const fs = require('fs');
+const path = require('path');
+for (const file of fs.readdirSync(path.join(__dirname, 'n8n')).filter((f) => /^WF.*\.json$/.test(f))) {
+  const raw = fs.readFileSync(path.join(__dirname, 'n8n', file), 'utf8');
+  assert.ok(!/gemini-2\.5-flash(?!-image)/.test(raw), `${file} must not use retired gemini-2.5-flash text model`);
+}
+console.log('Workflow Gemini model guard passed.');
