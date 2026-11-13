@@ -1,0 +1,62 @@
+{
+  "query": {
+    "pages": {
+      "101": {
+        "pageid": 101,
+        "title": "File:Braun T3 pocket radio.jpg",
+        "imageinfo": [{
+          "url": "https://upload.wikimedia.org/a.jpg",
+          "thumburl": "https://upload.wikimedia.org/thumb/a.jpg",
+          "descriptionurl": "https://commons.wikimedia.org/wiki/File:Braun_T3_pocket_radio.jpg",
+          "mime": "image/jpeg", "width": 3000, "height": 2000,
+          "extmetadata": {
+            "LicenseShortName": {"value": "CC BY-SA 4.0"},
+            "LicenseUrl": {"value": "https://creativecommons.org/licenses/by-sa/4.0"},
+            "Artist": {"value": "<a href=\"x\">Jane Doe</a>"},
+            "ImageDescription": {"value": "Test photo"}
+          }
+        }]
+      },
+      "102": {
+        "pageid": 102,
+        "title": "File:Chair no licence.jpg",
+        "imageinfo": [{
+          "url": "https://upload.wikimedia.org/b.jpg", "thumburl": "https://upload.wikimedia.org/thumb/b.jpg",
+          "descriptionurl": "https://commons.wikimedia.org/wiki/File:Chair_no_licence.jpg",
+          "mime": "image/jpeg", "width": 2000, "height": 1500,
+          "extmetadata": {"LicenseShortName": {"value": "CC BY-NC-SA 3.0"}, "Artist": {"value": "Someone"}}
+        }]
+      },
+      "103": {
+        "pageid": 103,
+        "title": "File:Old scan.png",
+        "imageinfo": [{
+          "url": "https://upload.wikimedia.org/c.png", "thumburl": "https://upload.wikimedia.org/thumb/c.png",
+          "descriptionurl": "https://commons.wikimedia.org/wiki/File:Old_scan.png",
+          "mime": "image/png", "width": 400, "height": 300,
+          "extmetadata": {"LicenseShortName": {"value": "Public domain"}, "Artist": {"value": "Unknown"}}
+        }]
+      },
+      "104": {
+        "pageid": 104,
+        "title": "File:Doc.pdf",
+        "imageinfo": [{
+          "url": "https://upload.wikimedia.org/d.pdf", "thumburl": "",
+          "descriptionurl": "https://commons.wikimedia.org/wiki/File:Doc.pdf",
+          "mime": "application/pdf", "width": 0, "height": 0,
+          "extmetadata": {"LicenseShortName": {"value": "CC0"}}
+        }]
+      },
+      "105": {
+        "pageid": 105,
+        "title": "File:Dieter Rams Ulm 2010.jpg",
+        "imageinfo": [{
+          "url": "https://upload.wikimedia.org/e.jpg", "thumburl": "https://upload.wikimedia.org/thumb/e.jpg",
+          "descriptionurl": "https://commons.wikimedia.org/wiki/File:Dieter_Rams_Ulm_2010.jpg",
+          "mime": "image/jpeg", "width": 2400, "height": 1600,
+          "extmetadata": {"LicenseShortName": {"value": "CC0"}, "Artist": {"value": "Photographer X"}}
+        }]
+      }
+    }
+  }
+}

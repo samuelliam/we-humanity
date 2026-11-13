@@ -1,0 +1,1035 @@
+{
+  "name": "WH - WF3c Research Slide Images",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "4ed655a7-9112-4f6e-a550-6d55482fee57",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "appgMOSrdu95bw0nf"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tblPgv6MsUEMNnvCn"
+        },
+        "filterByFormula": "RECORD_ID()='recD3MivrBtHYjGcN'",
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "id": "912985c6-9b00-4bf5-bad2-8516ea401d04",
+      "name": "Get Rams",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "viMKJjf6zTwCwyy0",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$json; const prompt=\"You are planning the six slides of a social carousel for WE, HUMANITY, a reverent but not stuffy series about human creativity, design and craftsmanship.\\n\\nStory title: {{title}}\\nPillar: {{pillar}}\\nGlance: {{glance}}\\nExplore: {{explore}}\\nDeep dive: {{deep_dive}}\\nRemember: {{remember}}\\n\\nRules:\\n- Exactly 6 slides. Slide 1 is the cover; slide 6 carries the Remember line.\\n- For each slide, name the REAL subject to photograph: a specific object, person, place, or drawing that exists and can be found in a museum or photo archive (e.g. \\\"Bialetti Moka Express stovetop coffee maker, 1933 model\\\"). Do not invent products, models, or variants. If no concrete real subject fits, use \\\"abstract\\\" and explain in `note`.\\n- Give 2\\u20133 `search_queries` that would find that exact subject on Wikimedia Commons (short, specific, English).\\n- Do not invent facts. Do not write slide text or captions.\\n- Flag anything you are unsure exists as `\\\"verify\\\": true`.\\n\\nReturn ONLY JSON in this shape:\\n{\\\"slides\\\":[{\\\"slide_index\\\":1,\\\"slide_type\\\":\\\"cover|object|person|process|detail|remember\\\",\\\"subject\\\":\\\"...\\\",\\\"search_queries\\\":[\\\"...\\\",\\\"...\\\"],\\\"note\\\":\\\"\\\",\\\"verify\\\":false}, ... 6 items]}\\n\";return [{json:{...s,planningPrompt:prompt.replace('{{title}}',s.Title).replace('{{pillar}}',s.Pillar).replace('{{glance}}',s.Glance).replace('{{explore}}',s.Explore).replace('{{deep_dive}}',s['Deep Dive']).replace('{{remember}}',s.Remember)}}];"
+      },
+      "id": "d68da0be-fd66-4733-802d-826c7e62217d",
+      "name": "Build Planning Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.5-flash-lite",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3.5-flash-lite"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.planningPrompt }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "71dc3dd8-14bf-4d9d-94fd-769078aaa299",
+      "name": "Plan Slides",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        0
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "aFRned7DK9GTsDf4",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const x=$input.first().json;\nlet p=x;\nif(!Array.isArray(x)&&!x.slides){\nconst raw=(x.content?.parts?.map(p=>p.text||'').join('')||x.text||x.output||'').replace(/```(?:json)?/g,'').trim();\np=JSON.parse(raw);\n}\nconst slides=Array.isArray(p)?p:p.slides;\nif(!Array.isArray(slides)||slides.length!==6)throw new Error('Invalid slide plan: expected exactly 6 slides');\nconst seen=new Set();\nreturn slides.map((s,i)=>{if(!Number.isInteger(s.slide_index)||s.slide_index<1||s.slide_index>6||seen.has(s.slide_index)||!s.subject||!s.slide_type||!Array.isArray(s.search_queries)||s.search_queries.length<2||s.search_queries.length>3||s.search_queries.some(q=>typeof q!=='string'||!q.trim()))throw new Error('Invalid slide plan entry '+(i+1));seen.add(s.slide_index);return {json:s,pairedItem:{item:0}};});"
+      },
+      "id": "b32afe51-6f57-423a-a23c-0294011e70c4",
+      "name": "Validate Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().flatMap((x,i)=>x.json.search_queries.map(query=>({json:{...x.json,query},pairedItem:{item:i}})));"
+      },
+      "id": "c1017006-3963-4522-8499-2c79bd1ba197",
+      "name": "Expand Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=5&gsrsearch={{ encodeURIComponent($json.query) }}&prop=imageinfo&iiprop=url%7Cextmetadata%7Cmime%7Csize&iiurlwidth=1200",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "WeHumanity/1.0 (local image research)"
+            },
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 5000
+        }
+      },
+      "id": "21f74cfc-0dea-475c-aef1-e689f2cd592b",
+      "name": "Commons Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1472,
+        0
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 1000,
+      "maxTries": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// Commons page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n\nconst groups=new Map();const qs=$('Expand Queries').all();for(const [i,r] of $input.all().entries()){const m=qs[i].json;let g=groups.get(m.slide_index);if(!g){g={...m,pages:new Map()};groups.set(m.slide_index,g);}for(const p of Object.values(r.json.query?.pages||{}))g.pages.set(p.pageid,{...p,foundQuery:m.query});}return [...groups.values()].map(g=>{const candidates=filterAndRank([...g.pages.values()].map(p=>({...parseCommonsPage(p),foundQuery:p.foundQuery}))).filter(c=>!/(?:\\bportrait\\b|\\bman\\b|\\bwoman\\b|\\bpeople\\b|\\bperson\\b)/i.test(c.title+' '+c.description)&&!/\\b(?:NC|ND)\\b/i.test(c.licenceRaw)&&c.downloadUrl.startsWith('https://')&&/^https:\\/\\/(?:upload|thumb)\\.wikimedia\\.org\\//.test(c.downloadUrl)&&c.pageUrl.startsWith('https://commons.wikimedia.org/')).slice(0,5);const {pages,...slide}=g;return {json:{...slide,candidates,researchStatus:candidates.length?'ready':'no_candidates'},pairedItem:{item:0}};});"
+      },
+      "id": "79cd8ff4-9b01-4f61-8fd1-f109760d6af5",
+      "name": "Parse and Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "models/gemini-3.8-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ `You are checking whether a Wikimedia Commons image shows the requested subject.\n\nRequested subject: ${$json.subject}\nStory context: ${$('Get Rams').first().json.Title}\n\nCandidates (JSON array; use pageid to refer to them):\n${JSON.stringify($json.candidates)}\n\nChoose the single candidate that best shows the requested subject: the object itself, recognisable, and not a different model or a related object.\n\nReject any candidate where a person is the main subject (portrait, group, or someone using the object). Reject font diagrams, schematics, and illustrations unless the subject is the illustration itself.\n\nRate confidence:\n- high: the title or description clearly identifies the requested subject and the model.\n- medium: plausibly the subject but not confirmed by the metadata.\n- low: unrelated, wrong model, person-led, or cannot tell.\n\nIf none match, return chosen_pageid null with confidence low.\n\nReturn ONLY JSON: {\"chosen_pageid\": 123 or null, \"confidence\": \"high|medium|low\", \"reason\": \"one sentence\"}` }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "4b2ce802-7204-4b0c-a791-247ea1291e76",
+      "name": "Choose Candidate",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1920,
+        0
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "aFRned7DK9GTsDf4",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function parse(x){if(x.slides||Object.hasOwn(x,'chosen_pageid'))return x;const raw=x.content?.parts?.map(p=>p.text||'').join('')||x.text||x.output||'';return JSON.parse(raw.slice(raw.indexOf('{'),raw.lastIndexOf('}')+1));}\nconst base=$('Has Candidates').all(0);return $input.all().map((x,i)=>{const s=base[i].json;const c=parse(x.json);const chosen=s.candidates.find(z=>z.pageid===c.chosen_pageid);const skip=s.subject.toLowerCase()==='abstract';const ok=!skip&&!s.verify&&chosen&&c.confidence==='high';return {json:{...s,chosen:ok?chosen:null,confidence:c.confidence,reason:String(c.reason||''),result:skip?'text_only':ok?'selected':s.candidates.length?'needs_review':'no_candidates'},pairedItem:{item:i}};});"
+      },
+      "id": "27496839-3075-4a9f-a5d9-92bbd15b7f29",
+      "name": "Apply Choice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2272,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "appgMOSrdu95bw0nf"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tblPgv6MsUEMNnvCn"
+        },
+        "id": "={{ $('Get Rams').first().json.id }}",
+        "options": {}
+      },
+      "id": "dfc8ebcf-9230-445a-b316-d44f3bc7034a",
+      "name": "Read Current Story",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2496,
+        0
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "viMKJjf6zTwCwyy0",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const s=$input.first().json;const choices=$('Collect Choices').all().map(x=>x.json);const bad=choices.filter(c=>!['selected','text_only'].includes(c.result));const flags=(s.Flags||'').split(';').map(x=>x.trim()).filter(Boolean);if(bad.length&&!flags.includes('image needs review'))flags.push('image needs review');const log='WF3c '+new Date().toISOString()+'\\n'+choices.map(c=>'Slide '+c.slide_index+': '+c.subject+' — '+c.result+' ('+c.confidence+'): '+c.reason).join('\\n');return [{json:{id:s.id,Flags:flags.join('; '),'Reviewer Notes':(s['Reviewer Notes']?s['Reviewer Notes']+'\\n\\n':'')+log}}];"
+      },
+      "id": "fd1c2659-7f1a-4ebd-b08d-f6e47ef37539",
+      "name": "Summarize Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "appgMOSrdu95bw0nf"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tblPgv6MsUEMNnvCn"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.id }}",
+            "Flags": "={{ $json.Flags }}",
+            "Reviewer Notes": "={{ $json['Reviewer Notes'] }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Flags",
+              "displayName": "Flags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reviewer Notes",
+              "displayName": "Reviewer Notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "d39d5e1a-ee12-448c-ae66-0d36ee3b28a4",
+      "name": "Record Research Review",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        2944,
+        0
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "viMKJjf6zTwCwyy0",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return $('Collect Choices').all().filter(x=>x.json.result==='selected').map((x,i)=>({json:x.json,pairedItem:{item:0}}));"
+      },
+      "id": "4e9c5658-edfa-4e9c-913b-58986ba9b2d2",
+      "name": "Selected Photos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3168,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.chosen.downloadUrl.split('?')[0] }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "WeHumanity/1.0 (local image research)"
+            },
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "5193dfc5-fe43-4daa-bd06-68761dc32d6d",
+      "name": "Download Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3392,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "jsCode": "const out=[];for(const [i,x]of $input.all().entries()){const m=$('Loop Image Downloads').all(1,$runIndex)[i].json;const b=await this.helpers.getBinaryDataBuffer(i,'data');if(!/^image\\//.test(x.binary?.data?.mimeType||'')||b.length<=10240||!(b[0]===0xff&&b[1]===0xd8)&&!(b[0]===0x89&&b[1]===0x50)&&!(b.toString('ascii',0,4)==='RIFF')&&!(b.toString('ascii',0,2)==='II')&&!(b.toString('ascii',0,2)==='MM'))throw new Error('Download verification failed for slide '+m.slide_index+': '+(x.binary?.data?.mimeType||'missing MIME')+', '+b.length+' bytes');out.push({json:{...m,localPath:'/Users/admin/.n8n-files/assets/rams/slide_'+m.slide_index+'.'+(x.binary.data.fileExtension||'jpg')},binary:x.binary,pairedItem:{item:i}});}return out;"
+      },
+      "id": "5e2aa238-05cb-456b-ad07-d485819d1b7f",
+      "name": "Verify Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3616,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $json.localPath }}",
+        "options": {}
+      },
+      "id": "f2b36992-5a34-42e9-8992-a8d2b4e35d0e",
+      "name": "Save File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        3840,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// Commons page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n\nreturn $input.all().map((x,i)=>{const s=x.json,c=s.chosen;const credit=buildCredit(c).replace('Cropped and resized; no other changes.','Downloaded without image edits.');return {json:{Name:'Rams WF3c S'+s.slide_index+' — '+s.subject,Story:[$('Get Rams').first().json.id],Type:'image',File:[{url:c.downloadUrl,filename:'rams_slide_'+s.slide_index+'.jpg'}],'Source URL':c.pageUrl,License:c.licenceRaw,'AI Generated':false,'Slide Index':s.slide_index,'Slide Type':({object:'context',person:'people',detail:'process'})[s.slide_type]||(['cover','context','problem','process','people','remember'].includes(s.slide_type)?s.slide_type:'context'),Model:'gemini-3.8-flash','Generation Prompt':c.foundQuery,Credit:credit,'Selection Reason':s.reason,Confidence:s.confidence,localPath:s.localPath},pairedItem:{item:i}};});"
+      },
+      "id": "98bc7420-6a6c-46a5-ac01-04973730e17f",
+      "name": "Build Assets Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4064,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "appgMOSrdu95bw0nf"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tbl8HCdgugwL3SZjy"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json[\"Name\"] }}",
+            "Story": "={{ $json[\"Story\"] }}",
+            "Type": "={{ $json[\"Type\"] }}",
+            "File": "={{ $json[\"File\"] }}",
+            "Source URL": "={{ $json[\"Source URL\"] }}",
+            "License": "={{ $json[\"License\"] }}",
+            "AI Generated": "={{ $json[\"AI Generated\"] }}",
+            "Slide Index": "={{ $json[\"Slide Index\"] }}",
+            "Slide Type": "={{ $json[\"Slide Type\"] }}",
+            "Model": "={{ $json[\"Model\"] }}",
+            "Generation Prompt": "={{ $json[\"Generation Prompt\"] }}",
+            "Credit": "={{ $json[\"Credit\"] }}",
+            "Selection Reason": "={{ $json[\"Selection Reason\"] }}",
+            "Confidence": "={{ $json[\"Confidence\"] }}"
+          },
+          "matchingColumns": [
+            "Name"
+          ],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Story",
+              "displayName": "Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "File",
+              "displayName": "File",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Source URL",
+              "displayName": "Source URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "License",
+              "displayName": "License",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "AI Generated",
+              "displayName": "AI Generated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Slide Index",
+              "displayName": "Slide Index",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Slide Type",
+              "displayName": "Slide Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Model",
+              "displayName": "Model",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Generation Prompt",
+              "displayName": "Generation Prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Credit",
+              "displayName": "Credit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Selection Reason",
+              "displayName": "Selection Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ecdbdf5a-eaed-404b-bc62-553fc60d7ddd",
+      "name": "Create Asset",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        4288,
+        0
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "viMKJjf6zTwCwyy0",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "763d4086-d65a-438a-8b83-861ae2027369",
+      "name": "Loop Commons Searches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1264,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "78599946-daaf-4d61-9f3d-bf65ab298104",
+      "name": "Pace Commons Searches",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1696,
+        224
+      ],
+      "webhookId": "c048593d-ee42-407b-a767-abe19024d420"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7c16ec5d-110f-4446-84bd-885e920f154d",
+              "leftValue": "={{ Array.isArray($json.candidates) && $json.candidates.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6938e63b-da01-4fe3-8a62-6f157eaf60f2",
+      "name": "Has Candidates",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1904,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((x,i)=>({json:{...x.json,chosen:null,confidence:'low',reason:'No licensed matching image candidates were found.',result:'no_candidates'},pairedItem:{item:i}}));"
+      },
+      "id": "d9074b5b-6302-4f13-90a0-c72d42b46329",
+      "name": "No Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2128,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "2ea59bf7-c90d-4ab6-aebf-16bc1fd3cbb5",
+      "name": "Collect Choices",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2608,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "9b895452-5eda-457a-9af4-2657372d549c",
+      "name": "Loop Image Downloads",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3200,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "630007a5-f18a-4fc7-9721-f056553bb761",
+      "name": "Pace Image Downloads",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3712,
+        400
+      ],
+      "webhookId": "479a4560-2922-4090-9067-bc1c9a63825e"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Rams",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Rams": {
+      "main": [
+        [
+          {
+            "node": "Build Planning Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Planning Prompt": {
+      "main": [
+        [
+          {
+            "node": "Plan Slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Slides": {
+      "main": [
+        [
+          {
+            "node": "Validate Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Plan": {
+      "main": [
+        [
+          {
+            "node": "Expand Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Queries": {
+      "main": [
+        [
+          {
+            "node": "Loop Commons Searches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Commons Search": {
+      "main": [
+        [
+          {
+            "node": "Pace Commons Searches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse and Filter": {
+      "main": [
+        [
+          {
+            "node": "Has Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose Candidate": {
+      "main": [
+        [
+          {
+            "node": "Apply Choice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Choice": {
+      "main": [
+        [
+          {
+            "node": "Collect Choices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Current Story": {
+      "main": [
+        [
+          {
+            "node": "Summarize Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize Research": {
+      "main": [
+        [
+          {
+            "node": "Record Research Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Research Review": {
+      "main": [
+        [
+          {
+            "node": "Selected Photos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Selected Photos": {
+      "main": [
+        [
+          {
+            "node": "Loop Image Downloads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Image": {
+      "main": [
+        [
+          {
+            "node": "Verify Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Image": {
+      "main": [
+        [
+          {
+            "node": "Pace Image Downloads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save File": {
+      "main": [
+        [
+          {
+            "node": "Build Assets Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Assets Record": {
+      "main": [
+        [
+          {
+            "node": "Create Asset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Commons Searches": {
+      "main": [
+        [
+          {
+            "node": "Parse and Filter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Commons Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pace Commons Searches": {
+      "main": [
+        [
+          {
+            "node": "Loop Commons Searches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Candidates": {
+      "main": [
+        [
+          {
+            "node": "Choose Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Candidates": {
+      "main": [
+        [
+          {
+            "node": "Collect Choices",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Collect Choices": {
+      "main": [
+        [
+          {
+            "node": "Read Current Story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Image Downloads": {
+      "main": [
+        [
+          {
+            "node": "Save File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pace Image Downloads": {
+      "main": [
+        [
+          {
+            "node": "Loop Image Downloads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "28c09077-1542-43eb-864e-2d50ff88f3ca",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f242062978872c0a179691b39c3e27c0457a4ed6ba7e9f0eff37e64ab5299479"
+  },
+  "id": "Bnv0SFCD8oerXXhs",
+  "tags": []
+}
