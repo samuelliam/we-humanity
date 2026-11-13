@@ -88,6 +88,7 @@ function buildCarouselSlides(story, assets) {
     license: asset.License || '',
     aiGenerated: !!asset['AI Generated'],
     imagePath: asset.localPath || '',
+    imageUrl: (Array.isArray(asset.File) && asset.File[0] && asset.File[0].url) || '',
   }));
 }
 
@@ -107,7 +108,7 @@ function renderSlideSvg(slide) {
 
   const imgHref = slide.imagePath && fs.existsSync(slide.imagePath)
     ? 'data:image/jpeg;base64,' + fs.readFileSync(slide.imagePath).toString('base64')
-    : '';
+    : (slide.imageUrl ? esc(slide.imageUrl) : '');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
@@ -133,13 +134,21 @@ function renderSlideSvg(slide) {
 }
 
 if (require.main === module) {
-  const inputPath = process.argv[2];
-  const outDir = process.argv[3] || path.join(process.cwd(), 'renders');
-  if (!inputPath) {
-    console.error('Usage: node scripts/render-carousel.js <payload.json> [outDir]');
-    process.exit(1);
+  let payload;
+  let outDir;
+  if (process.argv[2] === '--b64') {
+    payload = JSON.parse(Buffer.from(process.argv[3] || '', 'base64').toString('utf8'));
+    outDir = process.argv[4] || path.join(process.cwd(), 'renders', payload.storyId || 'out');
+  } else {
+    const inputPath = process.argv[2];
+    outDir = process.argv[3] || path.join(process.cwd(), 'renders');
+    if (!inputPath) {
+      console.error('Usage: node scripts/render-carousel.js <payload.json|--b64 base64> [outDir]');
+      process.exit(1);
+    }
+    payload = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
   }
-  const payload = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
+
   const slides = buildCarouselSlides(payload.story, payload.assets);
   fs.mkdirSync(outDir, { recursive: true });
   const files = slides.map((s) => {
@@ -147,7 +156,22 @@ if (require.main === module) {
     fs.writeFileSync(out, renderSlideSvg(s));
     return out;
   });
-  console.log(JSON.stringify({ rendered: files.length, files }));
+  const credits = slides.map((s) => `${s.slideIndex}. ${s.credit}`).join('\n');
+  const manifest = {
+    storyId: payload.storyId || payload.story.id || '',
+    title: payload.story.Title,
+    pillar: payload.story.Pillar || '',
+    rendered: files.length,
+    files,
+    linkedinCaption: `${payload.story.Title}\n\n${payload.story.Glance || ''}\n\n${payload.story.Remember || ''}\n\nCredits:\n${credits}`,
+    instagramCaption: `${payload.story.Title}\n\n${payload.story.Glance || ''}\n\nSwipe through for the full story.\n\n${payload.story.Remember || ''}`,
+    xThread: {
+      post1: `${payload.story.Title} — ${payload.story.Glance || ''}`.slice(0, 280),
+      post2: `${payload.story.Remember || ''}`.slice(0, 280),
+    },
+  };
+  fs.writeFileSync(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  console.log(JSON.stringify(manifest));
 }
 
 module.exports = { buildCarouselSlides, renderSlideSvg, wrapText };

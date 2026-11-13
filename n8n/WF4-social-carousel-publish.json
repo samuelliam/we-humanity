@@ -113,9 +113,9 @@
         1056,
         240
       ],
-      "disabled": true,
+      "disabled": false,
       "parameters": {
-        "command": "=node /Users/admin/Documents/My\\ Workspace/we-humanity-wf3c/scripts/render-carousel.js /tmp/wf4-payload.json /Users/admin/Documents/My\\ Workspace/we-humanity-wf3c/renders/{{ $json.storyId }}"
+        "command": "={{ 'node \"/Users/admin/Documents/My Workspace/we-humanity-wf3c/scripts/render-carousel.js\" --b64 ' + Buffer.from(JSON.stringify($json)).toString('base64') + ' \"/Users/admin/Documents/My Workspace/we-humanity-wf3c/renders/' + $json.storyId + '\"' }}"
       }
     },
     {
@@ -169,7 +169,10 @@
       "disabled": true,
       "parameters": {
         "method": "POST",
-        "url": "https://api.linkedin.com/rest/posts"
+        "url": "https://api.linkedin.com/rest/posts",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ commentary: .linkedinCaption, visibility: \"PUBLIC\", lifecycleState: \"PUBLISHED\" }) }}"
       }
     },
     {
@@ -184,7 +187,10 @@
       "disabled": true,
       "parameters": {
         "method": "POST",
-        "url": "https://graph.facebook.com/v21.0/me/media"
+        "url": "https://graph.facebook.com/v21.0/me/media",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ caption: .instagramCaption, media_type: \"CAROUSEL\" }) }}"
       }
     },
     {
@@ -199,7 +205,23 @@
       "disabled": true,
       "parameters": {
         "method": "POST",
-        "url": "https://api.x.com/2/tweets"
+        "url": "https://api.x.com/2/tweets",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: .xThread.post1 }) }}"
+      }
+    },
+    {
+      "id": "210e8faf-191f-4732-95c5-c32ef2170877",
+      "name": "Parse Render Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        240
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((x, i) => ({ json: JSON.parse(x.json.stdout || '{}'), pairedItem: { item: i } }));"
       }
     }
   ],
@@ -252,7 +274,7 @@
       "main": [
         [
           {
-            "node": "Set Carousel Review Pending",
+            "node": "Parse Render Output",
             "type": "main",
             "index": 0
           }
@@ -274,6 +296,17 @@
           },
           {
             "node": "Publish X Thread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Render Output": {
+      "main": [
+        [
+          {
+            "node": "Set Carousel Review Pending",
             "type": "main",
             "index": 0
           }
