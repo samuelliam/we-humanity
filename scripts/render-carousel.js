@@ -74,12 +74,13 @@ function punchyStatement(text, maxWords) {
  */
 function buildCarouselSlides(story, assets) {
   if (!story || !story.Title) throw new Error('Missing Story Title');
-  const sorted = [...(assets || [])].sort((a, b) => (a['Slide Index'] || 0) - (b['Slide Index'] || 0));
-  if (sorted.length !== 6) throw new Error('Expected exactly 6 Assets, got ' + sorted.length);
-  for (let i = 0; i < 6; i++) {
-    if (sorted[i]['Slide Index'] !== i + 1) throw new Error('Missing Slide Index ' + (i + 1));
-    if (!sorted[i].Credit) throw new Error('Missing Credit on Slide ' + (i + 1));
+  const byIndex = new Map();
+  for (const a of (assets || [])) {
+    const idx = Number(a['Slide Index']);
+    if (idx >= 1 && idx <= 6) byIndex.set(idx, a);
   }
+  const sorted = [...byIndex.entries()].sort((a, b) => a[0] - b[0]).map(([, a]) => a);
+  if (sorted.length === 0) throw new Error('No valid Assets with Slide Index 1-6 found');
 
   const deepDive = String(story['Deep Dive'] || '').trim();
   const sentences = deepDive.split(/(?<=[.!?])\s+/).filter(Boolean);
@@ -95,9 +96,11 @@ function buildCarouselSlides(story, assets) {
     punchyStatement(story.Remember, 10),
   ];
 
-  return sorted.map((asset, idx) => ({
-    slideIndex: idx + 1,
-    totalSlides: 6,
+  return sorted.map((asset) => {
+    const idx = Number(asset['Slide Index']) - 1;
+    return {
+      slideIndex: idx + 1,
+      totalSlides: sorted.length,
     pillar: String(story.Pillar || 'WE, HUMANITY').toUpperCase(),
     statement: asset.overlayText ? String(asset.overlayText).toUpperCase() : statements[idx],
     style: asset.style || 'photo',
@@ -106,7 +109,8 @@ function buildCarouselSlides(story, assets) {
     aiGenerated: !!asset['AI Generated'],
     imagePath: asset.localPath || '',
     imageUrl: (Array.isArray(asset.File) && asset.File[0] && asset.File[0].url) || '',
-  }));
+    };
+  });
 }
 
 /**

@@ -1,0 +1,719 @@
+[
+  {
+    "updatedAt": "2026-11-10T08:41:46.970Z",
+    "createdAt": "2026-11-10T05:21:15.053Z",
+    "id": "Ifx5YGd9WgDVqvRF",
+    "name": "WH - WF2 Draft Story (test)",
+    "description": null,
+    "active": false,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {},
+        "name": "Manual Trigger",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          768,
+          0
+        ],
+        "id": "829a9875-c3a5-4db1-b43e-61061cde4144"
+      },
+      {
+        "parameters": {
+          "operation": "search",
+          "base": {
+            "__rl": true,
+            "value": "appgMOSrdu95bw0nf",
+            "mode": "id"
+          },
+          "table": {
+            "__rl": true,
+            "value": "tblcmvhYzCFMnUYj6",
+            "mode": "id"
+          },
+          "filterByFormula": "{Status}='queued'",
+          "returnAll": false,
+          "limit": 1,
+          "options": {},
+          "sort": {
+            "property": [
+              {
+                "field": "Priority"
+              }
+            ]
+          }
+        },
+        "id": "03485810-0e8e-445d-a3df-4a13a9b133a9",
+        "name": "Search Backlog",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          992,
+          0
+        ],
+        "credentials": {
+          "airtableTokenApi": {
+            "id": "viMKJjf6zTwCwyy0",
+            "name": "Airtable Personal Access Token account"
+          }
+        },
+        "alwaysOutputData": true
+      },
+      {
+        "parameters": {
+          "jsCode": "const s = $json;\nconst system = 'You are the editor of WE, HUMANITY, an independent collection of stories about human creativity, discovery, craftsmanship and design. Voice: reverent but not stuffy, specific details over superlatives, curious not preachy. Write four depths: glance (essential idea, 1-2 sentences), explore (context and significance), deep_dive (people, process, constraints, consequences), remember (one lasting principle, one sentence). Only state facts you can support. List sources as URLs or citations. Set flags for any of: dates or numbers, quotes or motives attributed to a person, disputed attribution, living people. Return JSON only with keys: glance, explore, deep_dive, remember, sources (array of strings), flags (array of strings).';\nconst user = 'Story: ' + s.Title + '\\nPillar: ' + s.Pillar + '\\nBrief: ' + s.Brief;\nreturn [{json:{id: s.id, Title: s.Title, Pillar: s.Pillar, Brief: s.Brief, prompt: system + '\\n\\n' + user}}];"
+        },
+        "name": "Build Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1200,
+          0
+        ],
+        "id": "4ed36203-4ec1-4173-b18f-c03b55ff4acb"
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "models/gemini-3.8-flash",
+            "mode": "list",
+            "cachedResultName": "models/gemini-3.8-flash"
+          },
+          "messages": {
+            "values": [
+              {
+                "content": "={{ $json.prompt }}"
+              }
+            ]
+          },
+          "jsonOutput": true,
+          "builtInTools": {
+            "googleSearch": true
+          },
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.googleGemini",
+        "typeVersion": 1.1,
+        "position": [
+          1408,
+          0
+        ],
+        "id": "d59cbd0c-9d02-488f-9a88-9b68b4d5a2ec",
+        "name": "Message a model",
+        "credentials": {
+          "googlePalmApi": {
+            "id": "aFRned7DK9GTsDf4",
+            "name": "Google Gemini(PaLM) Api account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const src = $('Build Prompt').first().json;\nconst item = $json;\nlet d;\nif (item.glance && item.deep_dive) {\n  d = item;\n} else {\n  const parts = item?.content?.parts ?? item?.candidates?.[0]?.content?.parts ?? [];\n  let raw = parts.map(p => p.text || '').join('') || item.text || item.output || '';\n  if (!raw) throw new Error('No text found. Keys: ' + Object.keys(item).join(', '));\n  raw = raw.replace(/```json|```/g, '').trim();\n  d = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));\n}\nconst text = [d.glance, d.explore, d.deep_dive, d.remember].join(' ');\nconst flags = new Set(d.flags || []);\nif (/\\d/.test(text)) flags.add('dates or numbers');\nif (text.includes('\"') || text.includes('\\u201C')) flags.add('quote');\nif (/\\b(invented|first|credited|discovered|designed by|pioneered)\\b/i.test(text)) flags.add('attribution');\nreturn [{\n  json: {\n    backlogId: src.id,\n    title: src.Title,\n    pillar: src.Pillar,\n    glance: d.glance,\n    explore: d.explore,\n    deep_dive: d.deep_dive,\n    remember: d.remember,\n    sources: (d.sources || []).join('\\n'),\n    flags: [...flags].join('; '),\n    status: flags.size > 0 ? 'needs_review' : 'drafted'\n  }\n}];"
+        },
+        "name": "Parse and Flag",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2016,
+          0
+        ],
+        "id": "8c2aa516-39eb-4511-862a-2e0e51a54e92"
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "base": {
+            "__rl": true,
+            "value": "appgMOSrdu95bw0nf",
+            "mode": "id"
+          },
+          "table": {
+            "__rl": true,
+            "value": "tblPgv6MsUEMNnvCn",
+            "mode": "id"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Title": "={{ $json.title }}",
+              "Pillar": "={{ $json.pillar }}",
+              "Status": "={{ $json.status }}",
+              "Glance": "={{ $json.glance }}",
+              "Explore": "={{ $json.explore }}",
+              "Deep Dive": "={{ $json.deep_dive }}",
+              "Remember": "={{ $json.remember }}",
+              "Sources": "={{ $json.sources }}",
+              "Flags": "={{ $json.flags }}",
+              "Backlog": "={{ [$json.backlogId] }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "Title",
+                "displayName": "Title",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Pillar",
+                "displayName": "Pillar",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Status",
+                "displayName": "Status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Glance",
+                "displayName": "Glance",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Explore",
+                "displayName": "Explore",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Deep Dive",
+                "displayName": "Deep Dive",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Remember",
+                "displayName": "Remember",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Sources",
+                "displayName": "Sources",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Flags",
+                "displayName": "Flags",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Backlog",
+                "displayName": "Backlog",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "array",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "id": "f48c7164-ce1f-4d39-92c7-75c1c7cfa891",
+        "name": "Create Story",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          2240,
+          0
+        ],
+        "credentials": {
+          "airtableTokenApi": {
+            "id": "viMKJjf6zTwCwyy0",
+            "name": "Airtable Personal Access Token account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "update",
+          "base": {
+            "__rl": true,
+            "value": "appgMOSrdu95bw0nf",
+            "mode": "id"
+          },
+          "table": {
+            "__rl": true,
+            "value": "tblcmvhYzCFMnUYj6",
+            "mode": "id"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "id": "={{ $('Parse and Flag').item.json.backlogId }}",
+              "Status": "used"
+            },
+            "matchingColumns": [
+              "id"
+            ],
+            "schema": [
+              {
+                "id": "id",
+                "displayName": "id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Status",
+                "displayName": "Status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "id": "1280b5b3-0c24-4170-9fef-fab4deb1be42",
+        "name": "Mark Backlog Used",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          2464,
+          0
+        ],
+        "credentials": {
+          "airtableTokenApi": {
+            "id": "viMKJjf6zTwCwyy0",
+            "name": "Airtable Personal Access Token account"
+          }
+        }
+      },
+      {
+        "id": "81eda615-8e55-4d28-9de6-0adf4fbc45ad",
+        "name": "Pass Story ID to WF3c",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2240,
+          0
+        ],
+        "parameters": {
+          "jsCode": "return [{ json: { storyId: $('Create Story').first().json.id } }];"
+        }
+      },
+      {
+        "id": "5da7c195-0ea3-4fd7-b506-88b0725aa6dc",
+        "name": "Trigger WF3c Image Research",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": [
+          2464,
+          0
+        ],
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "Bnv0SFCD8oerXXhs"
+          },
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        }
+      },
+      {
+        "id": "d5207e9d-5fde-4466-b655-687318480e19",
+        "name": "Has Backlog Item",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1088,
+          0
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "4b28cacf-2fd7-4eab-8f52-34c1caef9ae7",
+                "leftValue": "={{ Boolean($json.id) }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "f6ccb02b-3c0f-48b8-9d04-0e51648c0def",
+        "name": "Trigger WF1 Research",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": [
+          1200,
+          192
+        ],
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "WHWF1ResearchStory1"
+          },
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        }
+      },
+      {
+        "id": "9afa75fc-d5dc-488c-9d07-3db4c7975973",
+        "name": "Check Existing Story",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          1328,
+          0
+        ],
+        "alwaysOutputData": true,
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000,
+        "credentials": {
+          "airtableTokenApi": {
+            "id": "viMKJjf6zTwCwyy0",
+            "name": "Airtable Personal Access Token account"
+          }
+        },
+        "parameters": {
+          "authentication": "airtableTokenApi",
+          "resource": "record",
+          "operation": "search",
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "appgMOSrdu95bw0nf"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "tblPgv6MsUEMNnvCn"
+          },
+          "filterByFormula": "={{ \"LOWER({Title})=LOWER('\" + String($json.Title || '').replace(/'/g, \"\\\\'\") + \"')\" }}",
+          "returnAll": false,
+          "limit": 1,
+          "options": {}
+        }
+      },
+      {
+        "id": "6a3a5e84-f9dc-44f8-870c-61849e888d02",
+        "name": "Story Exists?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1488,
+          0
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "09898164-7085-4fcb-a9ae-05e38dc64328",
+                "leftValue": "={{ Boolean($json.id) }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "4f162968-872e-4f02-ae00-7f01718d222e",
+        "name": "Reuse Existing Story",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1680,
+          192
+        ],
+        "parameters": {
+          "jsCode": "return [{ json: { storyId: $json.id, reusedExisting: true } }];"
+        }
+      },
+      {
+        "id": "2306d481-e9f1-45e9-9278-526bed0f0ad0",
+        "name": "Prepare Story Input",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1680,
+          0
+        ],
+        "parameters": {
+          "jsCode": "const src = $('Has Backlog Item').first().json?.id ? $('Has Backlog Item').first().json : $('Trigger WF1 Research').first().json; return [{ json: src }];"
+        }
+      }
+    ],
+    "connections": {
+      "Manual Trigger": {
+        "main": [
+          [
+            {
+              "node": "Search Backlog",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Search Backlog": {
+        "main": [
+          [
+            {
+              "node": "Has Backlog Item",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Prompt": {
+        "main": [
+          [
+            {
+              "node": "Message a model",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Message a model": {
+        "main": [
+          [
+            {
+              "node": "Parse and Flag",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse and Flag": {
+        "main": [
+          [
+            {
+              "node": "Create Story",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Create Story": {
+        "main": [
+          [
+            {
+              "node": "Mark Backlog Used",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mark Backlog Used": {
+        "main": [
+          [
+            {
+              "node": "Pass Story ID to WF3c",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pass Story ID to WF3c": {
+        "main": [
+          [
+            {
+              "node": "Trigger WF3c Image Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Backlog Item": {
+        "main": [
+          [
+            {
+              "node": "Check Existing Story",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Trigger WF1 Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Trigger WF1 Research": {
+        "main": [
+          [
+            {
+              "node": "Check Existing Story",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Existing Story": {
+        "main": [
+          [
+            {
+              "node": "Story Exists?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Story Exists?": {
+        "main": [
+          [
+            {
+              "node": "Reuse Existing Story",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Prepare Story Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Story Input": {
+        "main": [
+          [
+            {
+              "node": "Build Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Reuse Existing Story": {
+        "main": [
+          [
+            {
+              "node": "Trigger WF3c Image Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false
+    },
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "pinData": {},
+    "versionId": "526dc770-2511-44a3-9977-434ffb46a211",
+    "activeVersionId": null,
+    "versionCounter": 29,
+    "triggerCount": 0,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-11-10T05:21:15.057Z",
+        "createdAt": "2026-11-10T05:21:15.057Z",
+        "role": "workflow:owner",
+        "workflowId": "Ifx5YGd9WgDVqvRF",
+        "projectId": "XvvmxUAoPfUOBoVP",
+        "project": {
+          "updatedAt": "2026-11-10T02:17:48.087Z",
+          "createdAt": "2026-11-10T02:17:25.851Z",
+          "id": "XvvmxUAoPfUOBoVP",
+          "name": "samuel liam <samuelliam17@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "creatorId": "055706bd-b5a3-44c6-8f77-c73c98ee16ca"
+        }
+      }
+    ]
+  }
+]

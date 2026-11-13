@@ -1,0 +1,273 @@
+{
+  "id": "WHWF1ResearchStory1",
+  "name": "WH - WF1 Research Story Backlog",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "4b1e17e2-e543-4917-90a8-8c332ef548a0",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        160,
+        160
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "99af151d-3ae2-4289-8ac9-2e5ee4cc3851",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        336
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "22b1a3f5-bdc0-4339-ba1f-43cef0daca6c",
+      "name": "Fetch Existing Stories",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        384,
+        240
+      ],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "viMKJjf6zTwCwyy0",
+          "name": "Airtable Personal Access Token account"
+        }
+      },
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "appgMOSrdu95bw0nf"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tblPgv6MsUEMNnvCn"
+        },
+        "returnAll": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "67aefe55-9928-4af3-868c-b9a9738a29f3",
+      "name": "Build Discovery Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const existing = $input.all().map(x => x.json.Title).filter(Boolean);\nconst avoid = existing.length ? 'Do NOT repeat or closely overlap any of these existing stories: ' + existing.join('; ') + '.' : 'No existing stories yet.';\nconst prompt = [\n  'You are the editorial researcher for WE, HUMANITY, a series about human creativity, discovery, craftsmanship, and design.',\n  'Propose THREE distinct, specific, real, historically documented subjects from different eras and regions (iconic objects, tools, maps, buildings, or craft breakthroughs) that are well-documented in museum archives and likely to have freely licensed photographs on Wikimedia Commons or Openverse.',\n  avoid,\n  'Set pillar to \"Form and function\" for every item.',\n  'Return ONLY JSON: {\"candidates\":[{\"title\":\"...\",\"pillar\":\"Form and function\",\"brief\":\"2-3 factual sentences summarizing what it is, who made it, when, and why it matters\",\"priority\":1}]}'\n].join('\\n\\n');\nreturn [{ json: { prompt } }];"
+      }
+    },
+    {
+      "id": "0920afcc-f5b6-46c8-a0ea-11b1d2e7d4be",
+      "name": "Research Subject",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        832,
+        240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "aFRned7DK9GTsDf4",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-3.8-flash",
+          "cachedResultName": "models/gemini-3.8-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {
+          "googleSearch": true
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "64dd2405-d45f-4108-95d9-5ed3c59bb0a5",
+      "name": "Parse Subject",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const existingTitles = $('Fetch Existing Stories').all().map(x => String(x.json.Title || '').toLowerCase()).filter(Boolean);\nconst words = s => new Set(String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3));\nconst isDuplicate = (title) => {\n  const t = String(title || '').toLowerCase().trim();\n  if (!t) return true;\n  if (existingTitles.some(e => e === t || e.includes(t) || t.includes(e))) return true;\n  const tw = words(t);\n  for (const e of existingTitles) {\n    const ew = words(e);\n    const overlap = [...tw].filter(w => ew.has(w)).length;\n    if (tw.size > 0 && overlap / Math.min(tw.size, ew.size || 1) >= 0.6) return true;\n  }\n  return false;\n};\nconst item = $json;\nlet d;\nif (item.candidates || item.title) {\n  d = item;\n} else {\n  const parts = item?.content?.parts ?? item?.candidates?.[0]?.content?.parts ?? [];\n  let raw = parts.map(p => p.text || '').join('') || item.text || item.output || '';\n  raw = raw.replace(/```json|```/g, '').trim();\n  d = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));\n}\nconst list = Array.isArray(d.candidates) ? d.candidates : [d];\nconst picked = list.find(c => c && c.title && c.brief && !isDuplicate(c.title));\nif (!picked) throw new Error('WF1 could not find a non-duplicate story subject');\nreturn [{ json: { Title: picked.title, Pillar: ['Form and function'].includes(picked.pillar) ? picked.pillar : 'Form and function', Brief: picked.brief, Status: 'queued', Priority: Number(picked.priority) || 1 } }];"
+      }
+    },
+    {
+      "id": "c083d1fa-b814-42fa-8457-926545c9c1b4",
+      "name": "Create Backlog Item",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1280,
+        240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "viMKJjf6zTwCwyy0",
+          "name": "Airtable Personal Access Token account"
+        }
+      },
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "appgMOSrdu95bw0nf"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tblcmvhYzCFMnUYj6"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Title": "={{ $json.Title }}",
+            "Pillar": "={{ $json.Pillar }}",
+            "Brief": "={{ $json.Brief }}",
+            "Status": "={{ $json.Status }}",
+            "Priority": "={{ $json.Priority }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2d149e59-0a89-49a3-b04f-fb4d10037be2",
+      "name": "Format Backlog Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const f = $json.fields || $json; return [{ json: { id: $json.id, Title: f.Title, Pillar: f.Pillar, Brief: f.Brief } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Existing Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Existing Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Existing Stories": {
+      "main": [
+        [
+          {
+            "node": "Build Discovery Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Discovery Prompt": {
+      "main": [
+        [
+          {
+            "node": "Research Subject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Subject": {
+      "main": [
+        [
+          {
+            "node": "Parse Subject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Subject": {
+      "main": [
+        [
+          {
+            "node": "Create Backlog Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Backlog Item": {
+      "main": [
+        [
+          {
+            "node": "Format Backlog Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
