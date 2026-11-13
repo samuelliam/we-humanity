@@ -72,9 +72,9 @@
         "parameters": {
           "modelId": {
             "__rl": true,
-            "value": "models/gemini-3.8-flash",
+            "value": "models/gemini-2.5-flash",
             "mode": "list",
-            "cachedResultName": "models/gemini-3.8-flash"
+            "cachedResultName": "models/gemini-2.5-flash"
           },
           "messages": {
             "values": [
@@ -130,7 +130,7 @@
       },
       {
         "parameters": {
-          "url": "=https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=20&gsrsearch={{ encodeURIComponent($json.query + ' filetype:bitmap') }}&prop=imageinfo&iiprop=url%7Cextmetadata%7Cmime%7Csize&iiurlwidth=1200",
+          "url": "=https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=20&gsrsearch={{ encodeURIComponent($json.query + ' filetype:bitmap') }}&prop=imageinfo&iiprop=url%7Cextmetadata%7Cmime%7Csize&iiurlwidth=1600",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -147,7 +147,7 @@
           "options": {
             "batching": {
               "batch": {
-                "batchSize": 1
+                "batchSize": 3
               }
             },
             "response": {
@@ -155,7 +155,7 @@
                 "responseFormat": "json"
               }
             },
-            "timeout": 5000
+            "timeout": 8000
           }
         },
         "id": "21f74cfc-0dea-475c-aef1-e689f2cd592b",
@@ -167,12 +167,12 @@
           -64
         ],
         "retryOnFail": true,
-        "waitBetweenTries": 5000,
-        "maxTries": 3
+        "waitBetweenTries": 1000,
+        "maxTries": 2
       },
       {
         "parameters": {
-          "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// Commons page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n\n// Rank by relevance to this slide's own words, then licence, then width.\n// The old order was licence first, so public-domain scans outranked the real\n// subject and slice(0,5) then discarded the correct CC BY / CC BY-SA photos.\nconst STOP = new Set(['the','and','of','for','with','by','designed','a','an','in','on','at','from','to','its','his','her','their']);\nfunction slideTokens(slide) {\n  const text = [slide.subject || '', ...(slide.search_queries || [])].join(' ').toLowerCase();\n  const out = new Set();\n  for (const w of text.split(/[^a-z0-9]+/).filter(Boolean)) {\n    if (w.length >= 3 && !STOP.has(w)) out.add(w);\n    else if (/[a-z]/.test(w) && /[0-9]/.test(w)) out.add(w);\n  }\n  return [...out];\n}\nconst squash = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');\nconst wordsOf = (v) => new Set(String(v || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));\n// Plain words must match a whole word (so 'braun' does not match 'Braunerova').\n// Tokens containing a digit (sk4, et66, 606) match inside the squashed string,\n// because titles write them as 'SK 4' or 'Vitsoe606'.\nfunction relevance(c, tokens) {\n  const text = c.title + ' ' + c.description;\n  const words = wordsOf(text);\n  const hay = squash(text);\n  let n = 0;\n  for (const t of tokens) {\n    if (/[0-9]/.test(t)) { if (hay.includes(t)) n++; }\n    else if (words.has(t)) n++;\n  }\n  return n;\n}\nfunction rankForSlide(candidates, tokens) {\n  const licenceRank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  const scored = candidates.map((c) => ({ c, hits: relevance(c, tokens) }));\n  const best = scored.reduce((m, x) => Math.max(m, x.hits), 0);\n  const keep = best > 0 ? scored.filter((x) => x.hits > 0) : scored;\n  return keep\n    .sort((a, b) => (b.hits - a.hits)\n      || ((b.c.width || 0) - (a.c.width || 0))\n      || (licenceRank[a.c.licence] - licenceRank[b.c.licence]))\n    .map((x) => x.c);\n}\n\nconst groups = new Map();\nconst qs = $('Expand Queries').all();\nfor (const [i, r] of $input.all().entries()) {\n  const m = qs[i].json;\n  let g = groups.get(m.slide_index);\n  if (!g) { g = { ...m, pages: new Map() }; groups.set(m.slide_index, g); }\n  for (const p of Object.values(r.json.query?.pages || {})) g.pages.set(p.pageid, { ...p, foundQuery: m.query });\n}\nreturn [...groups.values()].map((g) => {\n  const usable = [...g.pages.values()]\n    .map((p) => ({ ...parseCommonsPage(p), foundQuery: p.foundQuery }))\n    .filter((c) => c.ok\n      && !/\\b(?:NC|ND)\\b/i.test(c.licenceRaw)\n      && c.downloadUrl.startsWith('https://')\n      && /^https:\\/\\/(?:upload|thumb)\\.wikimedia\\.org\\//.test(c.downloadUrl)\n      && c.pageUrl.startsWith('https://commons.wikimedia.org/'))\n    .filter((c) => filterCandidate(c).pass);\n  const candidates = rankForSlide(usable, slideTokens(g)).slice(0, 5);\n  const { pages, ...slide } = g;\n  return { json: { ...slide, candidates, researchStatus: candidates.length ? 'ready' : 'no_candidates' }, pairedItem: { item: 0 } };\n});\n"
+          "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n    if (c.height && c.height < 600) reasons.push('too short (' + c.height + 'px tall)');\n    if (c.width && c.height) {\n      const aspect = c.width / c.height;\n      if (aspect > 2.2 || aspect < 0.35) reasons.push('extreme aspect ratio (' + c.width + 'x' + c.height + ')');\n    }\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// Commons page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n\n// Rank by relevance to this slide's own words, then licence, then width.\n// The old order was licence first, so public-domain scans outranked the real\n// subject and slice(0,5) then discarded the correct CC BY / CC BY-SA photos.\nconst STOP = new Set(['the','and','of','for','with','by','designed','a','an','in','on','at','from','to','its','his','her','their']);\nfunction slideTokens(slide) {\n  const text = [slide.subject || '', ...(slide.search_queries || [])].join(' ').toLowerCase();\n  const out = new Set();\n  for (const w of text.split(/[^a-z0-9]+/).filter(Boolean)) {\n    if (w.length >= 3 && !STOP.has(w)) out.add(w);\n    else if (/[a-z]/.test(w) && /[0-9]/.test(w)) out.add(w);\n  }\n  return [...out];\n}\nconst squash = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');\nconst wordsOf = (v) => new Set(String(v || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));\n// Plain words must match a whole word (so 'braun' does not match 'Braunerova').\n// Tokens containing a digit (sk4, et66, 606) match inside the squashed string,\n// because titles write them as 'SK 4' or 'Vitsoe606'.\nfunction relevance(c, tokens) {\n  const text = c.title + ' ' + c.description;\n  const words = wordsOf(text);\n  const hay = squash(text);\n  let n = 0;\n  for (const t of tokens) {\n    if (/[0-9]/.test(t)) { if (hay.includes(t)) n++; }\n    else if (words.has(t)) n++;\n  }\n  return n;\n}\nfunction rankForSlide(candidates, tokens) {\n  const licenceRank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  const scored = candidates.map((c) => ({ c, hits: relevance(c, tokens) }));\n  const best = scored.reduce((m, x) => Math.max(m, x.hits), 0);\n  const keep = best > 0 ? scored.filter((x) => x.hits > 0) : scored;\n  return keep\n    .sort((a, b) => (b.hits - a.hits)\n      || ((b.c.width || 0) - (a.c.width || 0))\n      || (licenceRank[a.c.licence] - licenceRank[b.c.licence]))\n    .map((x) => x.c);\n}\n\nconst groups = new Map();\nconst qs = $('Expand Queries').all();\nfor (const [i, r] of $input.all().entries()) {\n  const m = qs[i].json;\n  let g = groups.get(m.slide_index);\n  if (!g) { g = { ...m, pages: new Map() }; groups.set(m.slide_index, g); }\n  for (const p of Object.values(r.json.query?.pages || {})) g.pages.set(p.pageid, { ...p, foundQuery: m.query });\n}\nreturn [...groups.values()].map((g) => {\n  const usable = [...g.pages.values()]\n    .map((p) => ({ ...parseCommonsPage(p), foundQuery: p.foundQuery }))\n    .filter((c) => c.ok\n      && !/\\b(?:NC|ND)\\b/i.test(c.licenceRaw)\n      && c.downloadUrl.startsWith('https://')\n      && /^https:\\/\\/(?:upload|thumb)\\.wikimedia\\.org\\//.test(c.downloadUrl)\n      && c.pageUrl.startsWith('https://commons.wikimedia.org/'))\n    .filter((c) => filterCandidate(c).pass);\n  const candidates = rankForSlide(usable, slideTokens(g)).slice(0, 5);\n  const { pages, ...slide } = g;\n  return { json: { ...slide, candidates, researchStatus: candidates.length ? 'ready' : 'no_candidates' }, pairedItem: { item: 0 } };\n});\n"
         },
         "id": "79cd8ff4-9b01-4f61-8fd1-f109760d6af5",
         "name": "Parse and Filter",
@@ -187,14 +187,14 @@
         "parameters": {
           "modelId": {
             "__rl": true,
-            "value": "models/gemini-3.8-flash",
+            "value": "models/gemini-2.5-flash",
             "mode": "list",
-            "cachedResultName": "models/gemini-3.8-flash"
+            "cachedResultName": "models/gemini-2.5-flash"
           },
           "messages": {
             "values": [
               {
-                "content": "={{ `You are checking whether a Wikimedia Commons image shows the requested subject.\n\nRequested subject: ${$json.subject}\nStory context: ${$('Get Next Story').first().json.Title}\n\nCandidates (JSON array; use pageid to refer to them):\n${JSON.stringify($json.candidates)}\n\nChoose the single candidate that best shows the requested subject: the object itself, recognisable, and not a different model or a related object.\n\nPerson-led images are allowed if they are relevant to the requested subject. Reject font diagrams, schematics, and illustrations unless the subject is the illustration itself.\n\nRate confidence:\n- high: the title or description clearly identifies the requested subject and the model.\n- medium: plausibly the subject but not confirmed by the metadata.\n- low: unrelated, wrong model, or cannot tell.\n\nIf none match, return chosen_pageid null with confidence low.\n\nReturn ONLY JSON: {\"chosen_pageid\": 123 or null, \"confidence\": \"high|medium|low\", \"reason\": \"one sentence\"}` }}"
+                "content": "={{ `You are checking whether Wikimedia Commons or Openverse images show the requested subjects for a multi-slide story.\n\nStory context: ${$('Get Next Story').first().json.Title}\n\nSlides and their candidate pools (JSON array; use pageid to refer to candidates):\n${JSON.stringify($json.compactSlides)}\n\nFor EACH slide, choose the single candidate that best shows the requested subject: the object/scene itself, recognisable, and not a different model or unrelated object. Avoid picking the same pageid for two different slides when another valid candidate exists. Person-led images are allowed if relevant. Reject font diagrams, schematics, and illustrations unless the subject is the illustration itself.\n\nRate confidence per slide:\n- high: title or description clearly identifies the requested subject.\n- medium: plausibly the subject but not confirmed by metadata.\n- low: unrelated, wrong model, or cannot tell.\n\nIf none match for a slide, return chosen_pageid null with confidence low.\n\nReturn ONLY JSON: {\"choices\": [{\"slide_index\": 1, \"chosen_pageid\": 123 or null, \"confidence\": \"high|medium|low\", \"reason\": \"one sentence\"}]}` }}"
               }
             ]
           },
@@ -220,7 +220,7 @@
       },
       {
         "parameters": {
-          "jsCode": "function parse(x){if(x.slides||Object.hasOwn(x,'chosen_pageid'))return x;const raw=x.content?.parts?.map(p=>p.text||'').join('')||x.text||x.output||'';return JSON.parse(raw.slice(raw.indexOf('{'),raw.lastIndexOf('}')+1));}\nconst base=$('Has Candidates').all(0);\nconst used=new Map();\nreturn $input.all().map((x,i)=>{\nconst s=base[i].json;const c=parse(x.json);\nconst skip=s.subject.toLowerCase()==='abstract';\nconst chosen=s.candidates.find(z=>z.pageid===c.chosen_pageid);\nlet pick=null,dupOf=null;\nif(!skip&&chosen&&c.confidence!=='low'){\n  if(!used.has(chosen.pageid)){ pick=chosen; }\n  else {\n    dupOf=used.get(chosen.pageid);\n    pick=s.candidates.find(z=>!used.has(z.pageid))||null;\n  }\n  if(pick) used.set(pick.pageid, s.slide_index);\n}\nconst ok=!skip&&!s.verify&&pick&&pick.pageid===c.chosen_pageid&&c.confidence==='high';\nconst reason=[String(c.reason||''),dupOf?('Same image as slide '+dupOf+', so the next unused candidate from the pool was taken.'):''].filter(Boolean).join(' ');\nreturn {json:{...s,chosen:pick,confidence:c.confidence,reason,duplicate_of:dupOf,result:skip?'text_only':ok?'selected':pick?'needs_review':dupOf?'duplicate':'no_image'},pairedItem:{item:i}};\n});\n"
+          "jsCode": "function parse(x){if(x.choices||Object.hasOwn(x,'chosen_pageid'))return x;const raw=x.content?.parts?.map(p=>p.text||'').join('')||x.text||x.output||'';return JSON.parse(raw.slice(raw.indexOf('{'),raw.lastIndexOf('}')+1));}\nconst base=$('Prepare Batch Choice').first().json.slides;\nconst parsed=parse($input.first().json);\nconst choiceList=Array.isArray(parsed.choices)?parsed.choices:[parsed];\nconst bySlide=new Map(choiceList.map(c=>[Number(c.slide_index),c]));\nconst used=new Map();\nreturn base.map((s,i)=>{\n  const c=bySlide.get(Number(s.slide_index))||choiceList[i]||{chosen_pageid:null,confidence:'low',reason:'No decision returned.'};\n  const skip=s.subject.toLowerCase()==='abstract';\n  const chosen=(s.candidates||[]).find(z=>String(z.pageid)===String(c.chosen_pageid));\n  let pick=null,dupOf=null;\n  if(!skip&&chosen&&c.confidence!=='low'){\n    if(!used.has(chosen.pageid)){ pick=chosen; }\n    else {\n      dupOf=used.get(chosen.pageid);\n      pick=(s.candidates||[]).find(z=>!used.has(z.pageid))||null;\n    }\n    if(pick) used.set(pick.pageid, s.slide_index);\n  }\n  const ok=!skip&&!s.verify&&pick&&String(pick.pageid)===String(c.chosen_pageid)&&c.confidence==='high';\n  const reason=[String(c.reason||''),dupOf?('Same image as slide '+dupOf+', so the next unused candidate from the pool was taken.'):''].filter(Boolean).join(' ');\n  const aiFallbackPrompt=(!skip&&!pick)?['Archival museum documentary photograph of '+(s.subject||'historical design object')+'.','Soft diffuse museum gallery lighting, neutral off-white matte background, gentle natural cast shadows.','Shot on medium format camera, 80mm lens, f/8 aperture, razor-sharp optical focus, natural fine film grain.','No text, no logos, no modern accessories, no CGI render look.'].join(' '):'';\n  return {json:{...s,chosen:pick,confidence:c.confidence,reason,duplicate_of:dupOf,aiFallbackPrompt,result:skip?'text_only':ok?'selected':pick?'needs_review':dupOf?'duplicate':'no_image'},pairedItem:{item:0}};\n});"
         },
         "id": "27496839-3075-4a9f-a5d9-92bbd15b7f29",
         "name": "Apply Choice",
@@ -233,40 +233,35 @@
       },
       {
         "parameters": {
-          "base": {
-            "__rl": true,
-            "mode": "id",
-            "value": "appgMOSrdu95bw0nf"
-          },
-          "table": {
-            "__rl": true,
-            "mode": "id",
-            "value": "tblPgv6MsUEMNnvCn"
-          },
-          "id": "={{ $('Get Next Story').first().json.id }}",
-          "options": {}
+          "method": "GET",
+          "url": "={{ \"https://api.airtable.com/v0/appgMOSrdu95bw0nf/tblPgv6MsUEMNnvCn/\" + $('Get Next Story').first().json.id }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "airtableTokenApi",
+          "options": {
+            "timeout": 15000
+          }
         },
         "id": "dfc8ebcf-9230-445a-b316-d44f3bc7034a",
         "name": "Read Current Story",
-        "type": "n8n-nodes-base.airtable",
-        "typeVersion": 2.1,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
         "position": [
           2944,
           256
         ],
-        "retryOnFail": true,
-        "maxTries": 3,
-        "waitBetweenTries": 10000,
         "credentials": {
           "airtableTokenApi": {
             "id": "viMKJjf6zTwCwyy0",
             "name": "Airtable Personal Access Token account"
           }
-        }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
       },
       {
         "parameters": {
-          "jsCode": "const s=$input.first().json;const choices=$('Collect Choices').all().map(x=>x.json);const bad=choices.filter(c=>!['selected','text_only'].includes(c.result));const flags=(s.Flags||'').split(';').map(x=>x.trim()).filter(Boolean);if(bad.length&&!flags.includes('image needs review'))flags.push('image needs review');const log='WF3c '+new Date().toISOString()+'\\n'+choices.map(c=>'Slide '+c.slide_index+': '+c.subject+' — '+c.result+' ('+c.confidence+'): '+c.reason).join('\\n');return [{json:{id:s.id,Flags:flags.join('; '),'Reviewer Notes':(s['Reviewer Notes']?s['Reviewer Notes']+'\\n\\n':'')+log}}];"
+          "jsCode": "const s=$input.first().json;const f=s.fields||s;const choices=$('Collect Choices').all().map(x=>x.json);const bad=choices.filter(c=>!['selected','text_only'].includes(c.result));const flags=(f.Flags||'').split(';').map(x=>x.trim()).filter(Boolean);if(bad.length&&!flags.includes('image needs review'))flags.push('image needs review');const log='WF3c '+new Date().toISOString()+'\\n'+choices.map(c=>'Slide '+c.slide_index+': '+c.subject+' — '+c.result+' ('+c.confidence+'): '+c.reason).join('\\n');return [{json:{id:s.id,Flags:flags.join('; '),'Reviewer Notes':(f['Reviewer Notes']?f['Reviewer Notes']+'\\n\\n':'')+log}}];"
         },
         "id": "fd1c2659-7f1a-4ebd-b08d-f6e47ef37539",
         "name": "Summarize Research",
@@ -279,82 +274,38 @@
       },
       {
         "parameters": {
-          "operation": "update",
-          "base": {
-            "__rl": true,
-            "mode": "id",
-            "value": "appgMOSrdu95bw0nf"
-          },
-          "table": {
-            "__rl": true,
-            "mode": "id",
-            "value": "tblPgv6MsUEMNnvCn"
-          },
-          "columns": {
-            "mappingMode": "defineBelow",
-            "value": {
-              "id": "={{ $json.id }}",
-              "Flags": "={{ $json.Flags }}",
-              "Reviewer Notes": "={{ $json['Reviewer Notes'] }}"
-            },
-            "matchingColumns": [
-              "id"
-            ],
-            "schema": [
-              {
-                "id": "id",
-                "displayName": "id",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Flags",
-                "displayName": "Flags",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Reviewer Notes",
-                "displayName": "Reviewer Notes",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              }
-            ],
-            "attemptToConvertTypes": false,
-            "convertFieldsToString": false
-          },
-          "options": {}
+          "method": "PATCH",
+          "url": "={{ \"https://api.airtable.com/v0/appgMOSrdu95bw0nf/tblPgv6MsUEMNnvCn/\" + $json.id }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "airtableTokenApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ fields: { Flags: $json.Flags, \"Reviewer Notes\": $json['Reviewer Notes'] } }) }}",
+          "options": {
+            "timeout": 15000
+          }
         },
         "id": "d39d5e1a-ee12-448c-ae66-0d36ee3b28a4",
         "name": "Record Research Review",
-        "type": "n8n-nodes-base.airtable",
-        "typeVersion": 2.1,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
         "position": [
           3392,
           256
         ],
-        "retryOnFail": true,
-        "maxTries": 3,
-        "waitBetweenTries": 10000,
         "credentials": {
           "airtableTokenApi": {
             "id": "viMKJjf6zTwCwyy0",
             "name": "Airtable Personal Access Token account"
           }
-        }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
       },
       {
         "parameters": {
-          "jsCode": "return $('Collect Choices').all().filter(x=>x.json.result==='selected'||x.json.result==='needs_review').map((x,i)=>({json:x.json,pairedItem:{item:0}}));"
+          "jsCode": "return $('Collect Choices').all().filter(x=>x.json.result==='selected'||x.json.result==='needs_review'||(!x.json.chosen&&x.json.aiFallbackPrompt&&x.json.result!=='text_only')).map((x,i)=>({json:x.json,pairedItem:{item:0}}));"
         },
         "id": "4e9c5658-edfa-4e9c-913b-58986ba9b2d2",
         "name": "Selected Photos",
@@ -434,7 +385,7 @@
       },
       {
         "parameters": {
-          "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates without slide context. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\nconst STOP_WORDS = new Set(['the','and','of','for','with','by','designed','a','an','in','on','at','from','to','its','his','her','their']);\n\n// Extract search/subject tokens from a slide object for relevance scoring.\nfunction slideTokens(slide) {\n  const text = [(slide && slide.subject) || '', ...((slide && slide.search_queries) || [])].join(' ').toLowerCase();\n  const out = new Set();\n  for (const w of text.split(/[^a-z0-9]+/).filter(Boolean)) {\n    if (w.length >= 3 && !STOP_WORDS.has(w)) out.add(w);\n    else if (/[a-z]/.test(w) && /[0-9]/.test(w)) out.add(w);\n  }\n  return [...out];\n}\n\n// Count how many slide tokens match a candidate's title + description.\n// Plain words require whole-word match (so 'braun' does not match 'Braunerova');\n// digit-containing tokens match in the squashed string (so 'sk4' matches 'SK 4').\nfunction relevance(c, tokens) {\n  const text = (c.title || '') + ' ' + (c.description || '');\n  const words = new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));\n  const hay = text.toLowerCase().replace(/[^a-z0-9]+/g, '');\n  let n = 0;\n  for (const t of tokens) {\n    if (/[0-9]/.test(t)) { if (hay.includes(t)) n++; }\n    else if (words.has(t)) n++;\n  }\n  return n;\n}\n\n// Filter and rank candidates for a slide: relevance hits first, then width, then licence tier.\n// Drops zero-hit candidates when at least one candidate has a hit.\nfunction rankForSlide(candidates, tokens) {\n  const licenceRank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  const passed = candidates.filter((c) => filterCandidate(c).pass);\n  const scored = passed.map((c) => ({ c, hits: relevance(c, tokens) }));\n  const best = scored.reduce((m, x) => Math.max(m, x.hits), 0);\n  const keep = best > 0 ? scored.filter((x) => x.hits > 0) : scored;\n  return keep\n    .sort((a, b) => (b.hits - a.hits)\n      || ((b.c.width || 0) - (a.c.width || 0))\n      || (licenceRank[a.c.licence] - licenceRank[b.c.licence]))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// source page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  if (c.tier === 'Tier 2: Openverse' || (c.sourceProvider && c.sourceProvider !== 'Wikimedia Commons')) {\n    return buildOpenverseCredit(c);\n  }\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n// Normalise an Openverse license code (cc0, pdm, by, by-sa) to canonical label, or null if disallowed.\nfunction normaliseOpenverseLicence(lic) {\n  if (!lic || typeof lic !== 'string') return null;\n  const l = lic.trim().toLowerCase();\n  if (l === 'cc0') return 'CC0';\n  if (l === 'pdm' || l === 'public domain') return 'Public domain';\n  if (l === 'by') return 'CC BY';\n  if (l === 'by-sa') return 'CC BY-SA';\n  return null;\n}\n\n// Parse an Openverse v1 /images/ result into the normalised candidate schema.\nfunction parseOpenversePage(item) {\n  if (!item || !item.id) return { ok: false, reason: 'invalid item payload' };\n  const licence = normaliseOpenverseLicence(item.license);\n  const mime = item.filetype ? 'image/' + String(item.filetype).toLowerCase().replace(/^jpg$/, 'jpeg') : 'image/jpeg';\n  const rawLicence = item.license\n    ? (licence === 'Public domain' ? 'Public domain' : licence === 'CC0' ? 'CC0' : ('CC ' + String(item.license).toUpperCase() + ' ' + (item.license_version || '')).trim())\n    : '';\n  return {\n    ok: true,\n    pageid: item.id,\n    title: item.title || 'Untitled',\n    pageUrl: item.foreign_landing_url || item.url || '',\n    downloadUrl: item.url || '',\n    originalUrl: item.url || '',\n    thumbnailUrl: item.thumbnail || '',\n    width: item.width || 1200,\n    height: item.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence,\n    licenceRaw: rawLicence,\n    licenseUrl: item.license_url || '',\n    artist: item.creator || 'Unknown author',\n    credit: item.attribution || '',\n    description: (item.title || '') + (Array.isArray(item.tags) ? ' ' + item.tags.map((t) => t.name).filter(Boolean).join(' ') : ''),\n    dateCreated: '',\n    usageTerms: '',\n    sourceProvider: item.source || 'Openverse',\n    tier: 'Tier 2: Openverse',\n  };\n}\n\n// Deterministic attribution string for Openverse candidates.\nfunction buildOpenverseCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || 'Untitled').replace(/\"/g, \"'\");\n  const source = c.sourceProvider || 'Openverse';\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via ' + source + ' (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via ' + source + ' (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via ' + source + ' (' + c.pageUrl + ').';\n}\n\nconst out=[];\nfor (const [i,x] of $input.all().entries()) {\n  const s=$('Save File').itemMatching(i).json;\n  const c=s.chosen;\n  if(!c || (s.result!=='selected' && s.result!=='needs_review')) throw new Error('Refusing Asset without a validated candidate');\n  const bytes=await this.helpers.getBinaryDataBuffer(i,'data');\n  if(bytes.length>5000000) throw new Error('Saved file exceeds Airtable direct-upload limit for slide '+s.slide_index);\n  const filename=s.localPath.split('/').pop();\n  const attachmentUpload={contentType:x.binary.data.mimeType,filename,file:bytes.toString('base64')};\n  const storyTitle=($('Get Next Story').first().json.Title||'Story').slice(0,40);\n  out.push({json:{Name:storyTitle+' S'+s.slide_index+' — '+s.subject,Story:[$('Get Next Story').first().json.id],Type:'image','Source URL':c.pageUrl,License:c.licenceRaw,'AI Generated':false,'Slide Index':s.slide_index,'Slide Type':({object:'context',person:'people',detail:'process'})[s.slide_type]||(['cover','context','problem','process','people','remember'].includes(s.slide_type)?s.slide_type:'context'),Model:$('Plan Slides').params.modelId.value,'Generation Prompt':c.foundQuery,Credit:buildCredit(c),'Selection Reason':s.reason,Confidence:s.confidence,localPath:s.localPath,attachmentUpload},pairedItem:{item:i}});\n}\nreturn out;"
+          "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n    if (c.height && c.height < 600) reasons.push('too short (' + c.height + 'px tall)');\n    if (c.width && c.height) {\n      const aspect = c.width / c.height;\n      if (aspect > 2.2 || aspect < 0.35) reasons.push('extreme aspect ratio (' + c.width + 'x' + c.height + ')');\n    }\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates without slide context. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\nconst STOP_WORDS = new Set(['the','and','of','for','with','by','designed','a','an','in','on','at','from','to','its','his','her','their']);\n\n// Extract search/subject tokens from a slide object for relevance scoring.\nfunction slideTokens(slide) {\n  const text = [(slide && slide.subject) || '', ...((slide && slide.search_queries) || [])].join(' ').toLowerCase();\n  const out = new Set();\n  for (const w of text.split(/[^a-z0-9]+/).filter(Boolean)) {\n    if (w.length >= 3 && !STOP_WORDS.has(w)) out.add(w);\n    else if (/[a-z]/.test(w) && /[0-9]/.test(w)) out.add(w);\n  }\n  return [...out];\n}\n\n// Count how many slide tokens match a candidate's title + description.\n// Plain words require whole-word match (so 'braun' does not match 'Braunerova');\n// digit-containing tokens match in the squashed string (so 'sk4' matches 'SK 4').\nfunction relevance(c, tokens) {\n  const text = (c.title || '') + ' ' + (c.description || '');\n  const words = new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));\n  const hay = text.toLowerCase().replace(/[^a-z0-9]+/g, '');\n  let n = 0;\n  for (const t of tokens) {\n    if (/[0-9]/.test(t)) { if (hay.includes(t)) n++; }\n    else if (words.has(t)) n++;\n  }\n  return n;\n}\n\n// Filter and rank candidates for a slide: relevance hits first, then width, then licence tier.\n// Drops zero-hit candidates when at least one candidate has a hit.\nfunction rankForSlide(candidates, tokens) {\n  const licenceRank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  const passed = candidates.filter((c) => filterCandidate(c).pass);\n  const scored = passed.map((c) => ({ c, hits: relevance(c, tokens) }));\n  const best = scored.reduce((m, x) => Math.max(m, x.hits), 0);\n  const keep = best > 0 ? scored.filter((x) => x.hits > 0) : scored;\n  return keep\n    .sort((a, b) => (b.hits - a.hits)\n      || ((b.c.width || 0) - (a.c.width || 0))\n      || (licenceRank[a.c.licence] - licenceRank[b.c.licence]))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// source page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  if (c.tier === 'Tier 2: Openverse' || (c.sourceProvider && c.sourceProvider !== 'Wikimedia Commons')) {\n    return buildOpenverseCredit(c);\n  }\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n// Normalise an Openverse license code (cc0, pdm, by, by-sa) to canonical label, or null if disallowed.\nfunction normaliseOpenverseLicence(lic) {\n  if (!lic || typeof lic !== 'string') return null;\n  const l = lic.trim().toLowerCase();\n  if (l === 'cc0') return 'CC0';\n  if (l === 'pdm' || l === 'public domain') return 'Public domain';\n  if (l === 'by') return 'CC BY';\n  if (l === 'by-sa') return 'CC BY-SA';\n  return null;\n}\n\n// Parse an Openverse v1 /images/ result into the normalised candidate schema.\nfunction parseOpenversePage(item) {\n  if (!item || !item.id) return { ok: false, reason: 'invalid item payload' };\n  const licence = normaliseOpenverseLicence(item.license);\n  const mime = item.filetype ? 'image/' + String(item.filetype).toLowerCase().replace(/^jpg$/, 'jpeg') : 'image/jpeg';\n  const rawLicence = item.license\n    ? (licence === 'Public domain' ? 'Public domain' : licence === 'CC0' ? 'CC0' : ('CC ' + String(item.license).toUpperCase() + ' ' + (item.license_version || '')).trim())\n    : '';\n  return {\n    ok: true,\n    pageid: item.id,\n    title: item.title || 'Untitled',\n    pageUrl: item.foreign_landing_url || item.url || '',\n    downloadUrl: item.url || '',\n    originalUrl: item.url || '',\n    thumbnailUrl: item.thumbnail || '',\n    width: item.width || 1200,\n    height: item.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence,\n    licenceRaw: rawLicence,\n    licenseUrl: item.license_url || '',\n    artist: item.creator || 'Unknown author',\n    credit: item.attribution || '',\n    description: (item.title || '') + (Array.isArray(item.tags) ? ' ' + item.tags.map((t) => t.name).filter(Boolean).join(' ') : ''),\n    dateCreated: '',\n    usageTerms: '',\n    sourceProvider: item.source || 'Openverse',\n    tier: 'Tier 2: Openverse',\n  };\n}\n\n// Deterministic attribution string for Openverse candidates.\nfunction buildOpenverseCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || 'Untitled').replace(/\"/g, \"'\");\n  const source = c.sourceProvider || 'Openverse';\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via ' + source + ' (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via ' + source + ' (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via ' + source + ' (' + c.pageUrl + ').';\n}\n\nconst out=[];\nfor (const [i,x] of $input.all().entries()) {\n  const s=$('Save File').itemMatching(i).json;\n  const c=s.chosen;\n  if(!c || (s.result!=='selected' && s.result!=='needs_review' && !s.aiGenerated)) throw new Error('Refusing Asset without a validated candidate');\n  const bytes=await this.helpers.getBinaryDataBuffer(i,'data');\n  if(bytes.length>5000000) throw new Error('Saved file exceeds Airtable direct-upload limit for slide '+s.slide_index);\n  const filename=s.localPath.split('/').pop();\n  const attachmentUpload={contentType:x.binary.data.mimeType,filename,file:bytes.toString('base64')};\n  const storyTitle=($('Get Next Story').first().json.Title||'Story').slice(0,40);\n  out.push({json:{Name:storyTitle+' S'+s.slide_index+' — '+s.subject,Story:[$('Get Next Story').first().json.id],Type:'image','Source URL':c.pageUrl,License:s.aiGenerated?'Custom / AI Generated (WE, HUMANITY)':c.licenceRaw,'AI Generated':Boolean(s.aiGenerated),'Slide Index':s.slide_index,'Slide Type':({object:'context',person:'people',detail:'process'})[s.slide_type]||(['cover','context','problem','process','people','remember'].includes(s.slide_type)?s.slide_type:'context'),Model:s.aiGenerated?'gemini-2.5-flash-image':$('Plan Slides').params.modelId.value,'Generation Prompt':c.foundQuery,Credit:s.aiGenerated?'Visual synthesis via Gemini Flash Image (WE, HUMANITY)':buildCredit(c),'Selection Reason':s.aiGenerated?'Tier 3 AI fallback: no approved Commons/Openverse photo found.':s.reason,Confidence:s.confidence,localPath:s.localPath,attachmentUpload},pairedItem:{item:i}});\n}\nreturn out;"
         },
         "id": "98bc7420-6a6c-46a5-ac01-04973730e17f",
         "name": "Build Assets Record",
@@ -447,162 +398,21 @@
       },
       {
         "parameters": {
-          "operation": "create",
-          "base": {
-            "__rl": true,
-            "mode": "id",
-            "value": "appgMOSrdu95bw0nf"
-          },
-          "table": {
-            "__rl": true,
-            "mode": "id",
-            "value": "tbl8HCdgugwL3SZjy"
-          },
-          "columns": {
-            "mappingMode": "defineBelow",
-            "value": {
-              "Name": "={{ $json[\"Name\"] }}",
-              "Story": "={{ $json[\"Story\"] }}",
-              "Type": "={{ $json[\"Type\"] }}",
-              "Source URL": "={{ $json[\"Source URL\"] }}",
-              "License": "={{ $json[\"License\"] }}",
-              "AI Generated": "={{ $json[\"AI Generated\"] }}",
-              "Slide Index": "={{ $json[\"Slide Index\"] }}",
-              "Slide Type": "={{ $json[\"Slide Type\"] }}",
-              "Model": "={{ $json[\"Model\"] }}",
-              "Generation Prompt": "={{ $json[\"Generation Prompt\"] }}",
-              "Credit": "={{ $json[\"Credit\"] }}",
-              "Selection Reason": "={{ $json[\"Selection Reason\"] }}",
-              "Confidence": "={{ $json[\"Confidence\"] }}"
-            },
-            "schema": [
-              {
-                "id": "Name",
-                "displayName": "Name",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Story",
-                "displayName": "Story",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "array",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Type",
-                "displayName": "Type",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Source URL",
-                "displayName": "Source URL",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "License",
-                "displayName": "License",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "AI Generated",
-                "displayName": "AI Generated",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "boolean",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Slide Index",
-                "displayName": "Slide Index",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "number",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Slide Type",
-                "displayName": "Slide Type",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Model",
-                "displayName": "Model",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Generation Prompt",
-                "displayName": "Generation Prompt",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Credit",
-                "displayName": "Credit",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Selection Reason",
-                "displayName": "Selection Reason",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Confidence",
-                "displayName": "Confidence",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              }
-            ],
-            "attemptToConvertTypes": false,
-            "convertFieldsToString": false
-          },
-          "options": {}
+          "method": "POST",
+          "url": "https://api.airtable.com/v0/appgMOSrdu95bw0nf/tbl8HCdgugwL3SZjy",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "airtableTokenApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ fields: { Name: $json[\"Name\"], Story: $json[\"Story\"], Type: $json[\"Type\"], \"Source URL\": $json[\"Source URL\"], License: $json[\"License\"], \"AI Generated\": $json[\"AI Generated\"], \"Slide Index\": $json[\"Slide Index\"], \"Slide Type\": $json[\"Slide Type\"], Model: $json[\"Model\"], \"Generation Prompt\": $json[\"Generation Prompt\"], Credit: $json[\"Credit\"], \"Selection Reason\": $json[\"Selection Reason\"], Confidence: $json[\"Confidence\"] } }) }}",
+          "options": {
+            "timeout": 15000
+          }
         },
         "id": "ecdbdf5a-eaed-404b-bc62-553fc60d7ddd",
         "name": "Create Asset",
-        "type": "n8n-nodes-base.airtable",
-        "typeVersion": 2.1,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
         "position": [
           4960,
           256
@@ -613,14 +423,14 @@
             "name": "Airtable Personal Access Token account"
           }
         },
-        "disabled": false,
         "retryOnFail": true,
         "maxTries": 3,
-        "waitBetweenTries": 5000
+        "waitBetweenTries": 2000
       },
       {
         "parameters": {
-          "options": {}
+          "options": {},
+          "batchSize": 3
         },
         "id": "763d4086-d65a-438a-8b83-861ae2027369",
         "name": "Loop Commons Searches",
@@ -633,7 +443,7 @@
       },
       {
         "parameters": {
-          "amount": 1
+          "amount": 0.5
         },
         "id": "78599946-daaf-4d61-9f3d-bf65ab298104",
         "name": "Pace Commons Searches",
@@ -1019,7 +829,7 @@
           368
         ],
         "parameters": {
-          "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates without slide context. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\nconst STOP_WORDS = new Set(['the','and','of','for','with','by','designed','a','an','in','on','at','from','to','its','his','her','their']);\n\n// Extract search/subject tokens from a slide object for relevance scoring.\nfunction slideTokens(slide) {\n  const text = [(slide && slide.subject) || '', ...((slide && slide.search_queries) || [])].join(' ').toLowerCase();\n  const out = new Set();\n  for (const w of text.split(/[^a-z0-9]+/).filter(Boolean)) {\n    if (w.length >= 3 && !STOP_WORDS.has(w)) out.add(w);\n    else if (/[a-z]/.test(w) && /[0-9]/.test(w)) out.add(w);\n  }\n  return [...out];\n}\n\n// Count how many slide tokens match a candidate's title + description.\n// Plain words require whole-word match (so 'braun' does not match 'Braunerova');\n// digit-containing tokens match in the squashed string (so 'sk4' matches 'SK 4').\nfunction relevance(c, tokens) {\n  const text = (c.title || '') + ' ' + (c.description || '');\n  const words = new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));\n  const hay = text.toLowerCase().replace(/[^a-z0-9]+/g, '');\n  let n = 0;\n  for (const t of tokens) {\n    if (/[0-9]/.test(t)) { if (hay.includes(t)) n++; }\n    else if (words.has(t)) n++;\n  }\n  return n;\n}\n\n// Filter and rank candidates for a slide: relevance hits first, then width, then licence tier.\n// Drops zero-hit candidates when at least one candidate has a hit.\nfunction rankForSlide(candidates, tokens) {\n  const licenceRank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  const passed = candidates.filter((c) => filterCandidate(c).pass);\n  const scored = passed.map((c) => ({ c, hits: relevance(c, tokens) }));\n  const best = scored.reduce((m, x) => Math.max(m, x.hits), 0);\n  const keep = best > 0 ? scored.filter((x) => x.hits > 0) : scored;\n  return keep\n    .sort((a, b) => (b.hits - a.hits)\n      || ((b.c.width || 0) - (a.c.width || 0))\n      || (licenceRank[a.c.licence] - licenceRank[b.c.licence]))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// source page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  if (c.tier === 'Tier 2: Openverse' || (c.sourceProvider && c.sourceProvider !== 'Wikimedia Commons')) {\n    return buildOpenverseCredit(c);\n  }\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n// Normalise an Openverse license code (cc0, pdm, by, by-sa) to canonical label, or null if disallowed.\nfunction normaliseOpenverseLicence(lic) {\n  if (!lic || typeof lic !== 'string') return null;\n  const l = lic.trim().toLowerCase();\n  if (l === 'cc0') return 'CC0';\n  if (l === 'pdm' || l === 'public domain') return 'Public domain';\n  if (l === 'by') return 'CC BY';\n  if (l === 'by-sa') return 'CC BY-SA';\n  return null;\n}\n\n// Parse an Openverse v1 /images/ result into the normalised candidate schema.\nfunction parseOpenversePage(item) {\n  if (!item || !item.id) return { ok: false, reason: 'invalid item payload' };\n  const licence = normaliseOpenverseLicence(item.license);\n  const mime = item.filetype ? 'image/' + String(item.filetype).toLowerCase().replace(/^jpg$/, 'jpeg') : 'image/jpeg';\n  const rawLicence = item.license\n    ? (licence === 'Public domain' ? 'Public domain' : licence === 'CC0' ? 'CC0' : ('CC ' + String(item.license).toUpperCase() + ' ' + (item.license_version || '')).trim())\n    : '';\n  return {\n    ok: true,\n    pageid: item.id,\n    title: item.title || 'Untitled',\n    pageUrl: item.foreign_landing_url || item.url || '',\n    downloadUrl: item.url || '',\n    originalUrl: item.url || '',\n    thumbnailUrl: item.thumbnail || '',\n    width: item.width || 1200,\n    height: item.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence,\n    licenceRaw: rawLicence,\n    licenseUrl: item.license_url || '',\n    artist: item.creator || 'Unknown author',\n    credit: item.attribution || '',\n    description: (item.title || '') + (Array.isArray(item.tags) ? ' ' + item.tags.map((t) => t.name).filter(Boolean).join(' ') : ''),\n    dateCreated: '',\n    usageTerms: '',\n    sourceProvider: item.source || 'Openverse',\n    tier: 'Tier 2: Openverse',\n  };\n}\n\n// Deterministic attribution string for Openverse candidates.\nfunction buildOpenverseCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || 'Untitled').replace(/\"/g, \"'\");\n  const source = c.sourceProvider || 'Openverse';\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via ' + source + ' (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via ' + source + ' (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via ' + source + ' (' + c.pageUrl + ').';\n}\n\nreturn $input.all().map((x, i) => {\n  const slide = $('Format Openverse Query').itemMatching(i).json;\n  const results = Array.isArray(x.json && x.json.results) ? x.json.results : [];\n  const usable = results\n    .map((r) => ({ ...parseOpenversePage(r), foundQuery: slide.openverseQuery }))\n    .filter((c) => c.ok && c.downloadUrl && c.pageUrl && filterCandidate(c).pass);\n  const candidates = rankForSlide(usable, slideTokens(slide)).slice(0, 5);\n  return { json: { ...slide, candidates, fallbackTier: 'Tier 2: Openverse' }, pairedItem: { item: i } };\n});"
+          "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n    if (c.height && c.height < 600) reasons.push('too short (' + c.height + 'px tall)');\n    if (c.width && c.height) {\n      const aspect = c.width / c.height;\n      if (aspect > 2.2 || aspect < 0.35) reasons.push('extreme aspect ratio (' + c.width + 'x' + c.height + ')');\n    }\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates without slide context. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\nconst STOP_WORDS = new Set(['the','and','of','for','with','by','designed','a','an','in','on','at','from','to','its','his','her','their']);\n\n// Extract search/subject tokens from a slide object for relevance scoring.\nfunction slideTokens(slide) {\n  const text = [(slide && slide.subject) || '', ...((slide && slide.search_queries) || [])].join(' ').toLowerCase();\n  const out = new Set();\n  for (const w of text.split(/[^a-z0-9]+/).filter(Boolean)) {\n    if (w.length >= 3 && !STOP_WORDS.has(w)) out.add(w);\n    else if (/[a-z]/.test(w) && /[0-9]/.test(w)) out.add(w);\n  }\n  return [...out];\n}\n\n// Count how many slide tokens match a candidate's title + description.\n// Plain words require whole-word match (so 'braun' does not match 'Braunerova');\n// digit-containing tokens match in the squashed string (so 'sk4' matches 'SK 4').\nfunction relevance(c, tokens) {\n  const text = (c.title || '') + ' ' + (c.description || '');\n  const words = new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));\n  const hay = text.toLowerCase().replace(/[^a-z0-9]+/g, '');\n  let n = 0;\n  for (const t of tokens) {\n    if (/[0-9]/.test(t)) { if (hay.includes(t)) n++; }\n    else if (words.has(t)) n++;\n  }\n  return n;\n}\n\n// Filter and rank candidates for a slide: relevance hits first, then width, then licence tier.\n// Drops zero-hit candidates when at least one candidate has a hit.\nfunction rankForSlide(candidates, tokens) {\n  const licenceRank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  const passed = candidates.filter((c) => filterCandidate(c).pass);\n  const scored = passed.map((c) => ({ c, hits: relevance(c, tokens) }));\n  const best = scored.reduce((m, x) => Math.max(m, x.hits), 0);\n  const keep = best > 0 ? scored.filter((x) => x.hits > 0) : scored;\n  return keep\n    .sort((a, b) => (b.hits - a.hits)\n      || ((b.c.width || 0) - (a.c.width || 0))\n      || (licenceRank[a.c.licence] - licenceRank[b.c.licence]))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// source page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  if (c.tier === 'Tier 2: Openverse' || (c.sourceProvider && c.sourceProvider !== 'Wikimedia Commons')) {\n    return buildOpenverseCredit(c);\n  }\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n// Normalise an Openverse license code (cc0, pdm, by, by-sa) to canonical label, or null if disallowed.\nfunction normaliseOpenverseLicence(lic) {\n  if (!lic || typeof lic !== 'string') return null;\n  const l = lic.trim().toLowerCase();\n  if (l === 'cc0') return 'CC0';\n  if (l === 'pdm' || l === 'public domain') return 'Public domain';\n  if (l === 'by') return 'CC BY';\n  if (l === 'by-sa') return 'CC BY-SA';\n  return null;\n}\n\n// Parse an Openverse v1 /images/ result into the normalised candidate schema.\nfunction parseOpenversePage(item) {\n  if (!item || !item.id) return { ok: false, reason: 'invalid item payload' };\n  const licence = normaliseOpenverseLicence(item.license);\n  const mime = item.filetype ? 'image/' + String(item.filetype).toLowerCase().replace(/^jpg$/, 'jpeg') : 'image/jpeg';\n  const rawLicence = item.license\n    ? (licence === 'Public domain' ? 'Public domain' : licence === 'CC0' ? 'CC0' : ('CC ' + String(item.license).toUpperCase() + ' ' + (item.license_version || '')).trim())\n    : '';\n  return {\n    ok: true,\n    pageid: item.id,\n    title: item.title || 'Untitled',\n    pageUrl: item.foreign_landing_url || item.url || '',\n    downloadUrl: item.url || '',\n    originalUrl: item.url || '',\n    thumbnailUrl: item.thumbnail || '',\n    width: item.width || 1200,\n    height: item.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence,\n    licenceRaw: rawLicence,\n    licenseUrl: item.license_url || '',\n    artist: item.creator || 'Unknown author',\n    credit: item.attribution || '',\n    description: (item.title || '') + (Array.isArray(item.tags) ? ' ' + item.tags.map((t) => t.name).filter(Boolean).join(' ') : ''),\n    dateCreated: '',\n    usageTerms: '',\n    sourceProvider: item.source || 'Openverse',\n    tier: 'Tier 2: Openverse',\n  };\n}\n\n// Deterministic attribution string for Openverse candidates.\nfunction buildOpenverseCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || 'Untitled').replace(/\"/g, \"'\");\n  const source = c.sourceProvider || 'Openverse';\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via ' + source + ' (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via ' + source + ' (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via ' + source + ' (' + c.pageUrl + ').';\n}\n\nreturn $input.all().map((x, i) => {\n  const slide = $('Format Openverse Query').itemMatching(i).json;\n  const results = Array.isArray(x.json && x.json.results) ? x.json.results : [];\n  const usable = results\n    .map((r) => ({ ...parseOpenversePage(r), foundQuery: slide.openverseQuery }))\n    .filter((c) => c.ok && c.downloadUrl && c.pageUrl && filterCandidate(c).pass);\n  const candidates = rankForSlide(usable, slideTokens(slide)).slice(0, 5);\n  return { json: { ...slide, candidates, fallbackTier: 'Tier 2: Openverse' }, pairedItem: { item: i } };\n});"
         }
       },
       {
@@ -1160,6 +970,100 @@
         "parameters": {
           "jsCode": "return [{ json: { storyId: $('Get Next Story').first().json.id, skippedExistingAssets: true } }];"
         }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "needs-ai-gen",
+                "leftValue": "={{ !$json.chosen?.downloadUrl && !!$json.aiFallbackPrompt }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "needs-ai-generation",
+        "name": "Needs AI Generation?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          4060,
+          396
+        ]
+      },
+      {
+        "parameters": {
+          "resource": "image",
+          "operation": "generate",
+          "modelId": {
+            "__rl": true,
+            "value": "models/gemini-2.5-flash-image",
+            "mode": "list",
+            "cachedResultName": "models/gemini-2.5-flash-image"
+          },
+          "prompt": "={{ $json.aiFallbackPrompt }}",
+          "options": {
+            "binaryPropertyOutput": "data"
+          }
+        },
+        "id": "generate-ai-image",
+        "name": "Generate AI Image",
+        "type": "@n8n/n8n-nodes-langchain.googleGemini",
+        "typeVersion": 1.1,
+        "position": [
+          4280,
+          536
+        ],
+        "credentials": {
+          "googlePalmApi": {
+            "id": "aFRned7DK9GTsDf4",
+            "name": "Google Gemini(PaLM) Api account"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 2000,
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const out = [];\nfor (const [i, x] of $input.all().entries()) {\n  const m = $('Loop Image Downloads').all(1, $runIndex)[i].json;\n  if (!x.binary?.data) throw new Error('No binary image returned for slide ' + m.slide_index);\n  const ext = x.binary.data.fileExtension || (String(x.binary.data.mimeType || '').includes('jpeg') ? 'jpg' : 'png');\n  const storyId = $('Get Next Story').first().json.id;\n  const localPath = `/Users/admin/Documents/My Workspace/we-humanity-wf3c/assets/${storyId}_slide_${m.slide_index}.${ext}`;\n  out.push({\n    json: {\n      ...m,\n      aiGenerated: true,\n      result: 'ai_generated',\n      confidence: 'medium',\n      chosen: {\n        pageUrl: `urn:ai:gemini-2.5-flash-image:${storyId}-slide-${m.slide_index}`,\n        licenceRaw: 'Custom / AI Generated (WE, HUMANITY)',\n        foundQuery: m.aiFallbackPrompt\n      },\n      localPath\n    },\n    binary: x.binary,\n    pairedItem: { item: i }\n  });\n}\nreturn out;"
+        },
+        "id": "normalize-ai-image",
+        "name": "Normalize AI Image",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4500,
+          536
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const slides = $input.all().map(x => x.json);\nif (slides.length === 0) return [];\nconst compactSlides = slides.map(s => ({\n  slide_index: s.slide_index,\n  subject: s.subject,\n  candidates: (s.candidates || []).map(c => ({\n    pageid: c.pageid,\n    title: c.title,\n    description: String(c.description || '').slice(0, 140),\n    width: c.width || null\n  }))\n}));\nreturn [{ json: { slides, compactSlides }, pairedItem: { item: 0 } }];"
+        },
+        "id": "prepare-batch-choice",
+        "name": "Prepare Batch Choice",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1924,
+          80
+        ]
       }
     ],
     "connections": {
@@ -1397,7 +1301,7 @@
         "main": [
           [
             {
-              "node": "Choose Candidate",
+              "node": "Prepare Batch Choice",
               "type": "main",
               "index": 0
             }
@@ -1444,7 +1348,7 @@
           ],
           [
             {
-              "node": "Download Image",
+              "node": "Needs AI Generation?",
               "type": "main",
               "index": 0
             }
@@ -1587,7 +1491,7 @@
         "main": [
           [
             {
-              "node": "Choose Candidate",
+              "node": "Prepare Batch Choice",
               "type": "main",
               "index": 0
             }
@@ -1679,6 +1583,64 @@
           [
             {
               "node": "Trigger WF4 Render",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Needs AI Generation?": {
+        "main": [
+          [
+            {
+              "node": "Generate AI Image",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Download Image",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Generate AI Image": {
+        "main": [
+          [
+            {
+              "node": "Normalize AI Image",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Capture Image Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize AI Image": {
+        "main": [
+          [
+            {
+              "node": "Pace Image Downloads",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Batch Choice": {
+        "main": [
+          [
+            {
+              "node": "Choose Candidate",
               "type": "main",
               "index": 0
             }

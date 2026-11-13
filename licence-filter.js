@@ -60,6 +60,11 @@ function filterCandidate(c) {
     if (!c.pageUrl) reasons.push('missing source page URL');
     if (!c.downloadUrl) reasons.push('missing download URL');
     if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');
+    if (c.height && c.height < 600) reasons.push('too short (' + c.height + 'px tall)');
+    if (c.width && c.height) {
+      const aspect = c.width / c.height;
+      if (aspect > 2.2 || aspect < 0.35) reasons.push('extreme aspect ratio (' + c.width + 'x' + c.height + ')');
+    }
   }
   return { pass: reasons.length === 0, reasons };
 }

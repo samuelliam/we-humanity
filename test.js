@@ -44,6 +44,17 @@ assert.match(m.buildCredit(byId[103]), /by Unknown author, public domain/);
 // Missing imageinfo
 assert.strictEqual(m.parseCommonsPage({ pageid: 9, title: 'x' }).ok, false);
 
+const pano = m.filterCandidate({
+  ok: true,
+  isImage: true,
+  licence: 'Public domain',
+  pageUrl: 'https://commons.wikimedia.org/wiki/File:Scroll.jpg',
+  downloadUrl: 'https://upload.wikimedia.org/scroll.jpg',
+  width: 1280,
+  height: 171,
+});
+assert.strictEqual(pano.pass, false, 'Expected 1280x171 panoramic image to be rejected');
+
 console.log('All tests passed. Accepted, ranked:', ranked.map((c) => c.title));
 
 // Live-data variants and entity decoding.

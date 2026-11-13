@@ -58,11 +58,14 @@
             "name": "Airtable Personal Access Token account"
           }
         },
-        "alwaysOutputData": true
+        "alwaysOutputData": true,
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
       },
       {
         "parameters": {
-          "jsCode": "const s = $json;\nconst system = 'You are the editor of WE, HUMANITY, an independent collection of stories about human creativity, discovery, craftsmanship and design. Voice: reverent but not stuffy, specific details over superlatives, curious not preachy. Write four depths: glance (essential idea, 1-2 sentences), explore (context and significance), deep_dive (people, process, constraints, consequences), remember (one lasting principle, one sentence). Only state facts you can support. List sources as URLs or citations. Set flags for any of: dates or numbers, quotes or motives attributed to a person, disputed attribution, living people. Return JSON only with keys: glance, explore, deep_dive, remember, sources (array of strings), flags (array of strings).';\nconst user = 'Story: ' + s.Title + '\\nPillar: ' + s.Pillar + '\\nBrief: ' + s.Brief;\nreturn [{json:{id: s.id, Title: s.Title, Pillar: s.Pillar, Brief: s.Brief, prompt: system + '\\n\\n' + user}}];"
+          "jsCode": "const s = $json;\nconst system = 'You are the editor of WE, HUMANITY, an independent collection of stories about human creativity, discovery, craftsmanship and design. Voice: vivid, specific, human-centered, reverent but never stuffy—concrete stakes, numbers, and turning points over generic superlatives. Write four depths: glance (1-2 punchy sentences capturing the hook and stakes), explore (2 short paragraphs on the problem, rivals/alternatives, and why existing approaches failed), deep_dive (2-3 short paragraphs on the maker, trials, turning point, and proof/test), remember (1-2 sentences on the lasting legacy and principle). Only state facts you can support. List sources as URLs or citations. Set flags for any of: dates or numbers, quotes or motives attributed to a person, disputed attribution, living people. Return JSON only with keys: glance, explore, deep_dive, remember, sources (array of strings), flags (array of strings).';\nconst user = 'Story: ' + s.Title + '\\nPillar: ' + s.Pillar + '\\nBrief: ' + s.Brief;\nreturn [{json:{id: s.id, Title: s.Title, Pillar: s.Pillar, Brief: s.Brief, prompt: system + '\\n\\n' + user}}];"
         },
         "name": "Build Prompt",
         "type": "n8n-nodes-base.code",
@@ -124,133 +127,21 @@
       },
       {
         "parameters": {
-          "operation": "create",
-          "base": {
-            "__rl": true,
-            "value": "appgMOSrdu95bw0nf",
-            "mode": "id"
-          },
-          "table": {
-            "__rl": true,
-            "value": "tblPgv6MsUEMNnvCn",
-            "mode": "id"
-          },
-          "columns": {
-            "mappingMode": "defineBelow",
-            "value": {
-              "Title": "={{ $json.title }}",
-              "Pillar": "={{ $json.pillar }}",
-              "Status": "={{ $json.status }}",
-              "Glance": "={{ $json.glance }}",
-              "Explore": "={{ $json.explore }}",
-              "Deep Dive": "={{ $json.deep_dive }}",
-              "Remember": "={{ $json.remember }}",
-              "Sources": "={{ $json.sources }}",
-              "Flags": "={{ $json.flags }}",
-              "Backlog": "={{ [$json.backlogId] }}"
-            },
-            "matchingColumns": [],
-            "schema": [
-              {
-                "id": "Title",
-                "displayName": "Title",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Pillar",
-                "displayName": "Pillar",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Status",
-                "displayName": "Status",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Glance",
-                "displayName": "Glance",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Explore",
-                "displayName": "Explore",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Deep Dive",
-                "displayName": "Deep Dive",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Remember",
-                "displayName": "Remember",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Sources",
-                "displayName": "Sources",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Flags",
-                "displayName": "Flags",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Backlog",
-                "displayName": "Backlog",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "array",
-                "canBeUsedToMatch": true
-              }
-            ],
-            "attemptToConvertTypes": false,
-            "convertFieldsToString": false
-          },
-          "options": {}
+          "method": "POST",
+          "url": "https://api.airtable.com/v0/appgMOSrdu95bw0nf/tblPgv6MsUEMNnvCn",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "airtableTokenApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ fields: { Title: $json.title, Pillar: $json.pillar, Status: $json.status, Glance: $json.glance, Explore: $json.explore, \"Deep Dive\": $json.deep_dive, Remember: $json.remember, Sources: $json.sources, Flags: $json.flags, Backlog: [$json.backlogId] } }) }}",
+          "options": {
+            "timeout": 15000
+          }
         },
         "id": "f48c7164-ce1f-4d39-92c7-75c1c7cfa891",
         "name": "Create Story",
-        "type": "n8n-nodes-base.airtable",
-        "typeVersion": 2.1,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
         "position": [
           2240,
           0
@@ -260,59 +151,28 @@
             "id": "viMKJjf6zTwCwyy0",
             "name": "Airtable Personal Access Token account"
           }
-        }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
       },
       {
         "parameters": {
-          "operation": "update",
-          "base": {
-            "__rl": true,
-            "value": "appgMOSrdu95bw0nf",
-            "mode": "id"
-          },
-          "table": {
-            "__rl": true,
-            "value": "tblcmvhYzCFMnUYj6",
-            "mode": "id"
-          },
-          "columns": {
-            "mappingMode": "defineBelow",
-            "value": {
-              "id": "={{ $('Parse and Flag').item.json.backlogId }}",
-              "Status": "used"
-            },
-            "matchingColumns": [
-              "id"
-            ],
-            "schema": [
-              {
-                "id": "id",
-                "displayName": "id",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              },
-              {
-                "id": "Status",
-                "displayName": "Status",
-                "required": false,
-                "defaultMatch": false,
-                "display": true,
-                "type": "string",
-                "canBeUsedToMatch": true
-              }
-            ],
-            "attemptToConvertTypes": false,
-            "convertFieldsToString": false
-          },
-          "options": {}
+          "method": "PATCH",
+          "url": "={{ \"https://api.airtable.com/v0/appgMOSrdu95bw0nf/tblcmvhYzCFMnUYj6/\" + $('Parse and Flag').item.json.backlogId }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "airtableTokenApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ fields: { Status: \"used\" } }) }}",
+          "options": {
+            "timeout": 15000
+          }
         },
         "id": "1280b5b3-0c24-4170-9fef-fab4deb1be42",
         "name": "Mark Backlog Used",
-        "type": "n8n-nodes-base.airtable",
-        "typeVersion": 2.1,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
         "position": [
           2464,
           0
@@ -322,7 +182,10 @@
             "id": "viMKJjf6zTwCwyy0",
             "name": "Airtable Personal Access Token account"
           }
-        }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
       },
       {
         "id": "81eda615-8e55-4d28-9de6-0adf4fbc45ad",
@@ -423,7 +286,7 @@
         "alwaysOutputData": true,
         "retryOnFail": true,
         "maxTries": 3,
-        "waitBetweenTries": 5000,
+        "waitBetweenTries": 2000,
         "credentials": {
           "airtableTokenApi": {
             "id": "viMKJjf6zTwCwyy0",
@@ -507,7 +370,7 @@
           0
         ],
         "parameters": {
-          "jsCode": "const src = $('Has Backlog Item').first().json?.id ? $('Has Backlog Item').first().json : $('Trigger WF1 Research').first().json; return [{ json: src }];"
+          "jsCode": "let src = null;\ntry {\n  const item = $('Search Backlog').first();\n  if (item?.json?.id) src = item.json;\n} catch {}\nif (!src) {\n  try {\n    const item = $('Trigger WF1 Research').first();\n    if (item?.json?.id) src = item.json;\n  } catch {}\n}\nif (!src) throw new Error('No backlog item available from Search Backlog or Trigger WF1 Research');\nreturn [{ json: src }];"
         }
       }
     ],
