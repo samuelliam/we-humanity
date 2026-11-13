@@ -78,3 +78,40 @@ assert.deepStrictEqual(slideRanked.map((c) => c.pageid), [203, 202], 'drops 0-hi
 const zeroHitFallback = m.rankForSlide([falseBraun], ['zzzqqq']);
 assert.deepStrictEqual(zeroHitFallback.map((c) => c.pageid), [201], 'keeps passed candidates when all have 0 hits');
 console.log('Relevance and slide ranking checks passed.');
+
+// Openverse Tier 2 parser, licence normalisation, and credit builder.
+assert.strictEqual(m.normaliseOpenverseLicence('cc0'), 'CC0');
+assert.strictEqual(m.normaliseOpenverseLicence('pdm'), 'Public domain');
+assert.strictEqual(m.normaliseOpenverseLicence('by'), 'CC BY');
+assert.strictEqual(m.normaliseOpenverseLicence('by-sa'), 'CC BY-SA');
+assert.strictEqual(m.normaliseOpenverseLicence('by-nc'), null);
+
+const ovItem = {
+  id: 'ov-uuid-1',
+  title: 'Braun T3 Transistor Radio',
+  url: 'https://example.org/braun-t3.jpg',
+  foreign_landing_url: 'https://museum.example.org/items/t3',
+  thumbnail: 'https://api.openverse.org/v1/images/ov-uuid-1/thumb/',
+  width: 1600,
+  height: 1200,
+  filetype: 'jpg',
+  license: 'by-sa',
+  license_version: '4.0',
+  license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+  creator: 'Museum Archive',
+  source: 'smithsonian',
+  tags: [{ name: 'braun' }, { name: 'radio' }],
+};
+const ovParsed = m.parseOpenversePage(ovItem);
+assert.strictEqual(ovParsed.ok, true);
+assert.strictEqual(ovParsed.mime, 'image/jpeg');
+assert.strictEqual(ovParsed.licence, 'CC BY-SA');
+assert.strictEqual(ovParsed.licenceRaw, 'CC BY-SA 4.0');
+assert.strictEqual(m.filterCandidate(ovParsed).pass, true);
+const ovCredit = m.buildCredit(ovParsed);
+assert.match(ovCredit, /"Braun T3 Transistor Radio" by Museum Archive via smithsonian/);
+assert.match(ovCredit, /CC BY-SA 4\.0/);
+
+const ovNc = m.parseOpenversePage({ ...ovItem, id: 'ov-nc', license: 'by-nc' });
+assert.strictEqual(m.filterCandidate(ovNc).pass, false, 'Openverse NC rejected');
+console.log('Openverse fallback checks passed.');

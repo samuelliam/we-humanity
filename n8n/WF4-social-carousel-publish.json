@@ -1,0 +1,284 @@
+{
+  "name": "WH - WF4 Social Carousel Render & Publish",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "b09bdc6c-6e06-4afe-808a-57310675bd84",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        160,
+        240
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "6be54f9d-b387-40e3-a441-5090ca34858e",
+      "name": "Fetch Approved Stories",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        384,
+        240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "viMKJjf6zTwCwyy0",
+          "name": "Airtable Personal Access Token account"
+        }
+      },
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "appgMOSrdu95bw0nf"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tblPgv6MsUEMNnvCn"
+        },
+        "filterByFormula": "{Status}='Images Approved'",
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "c016b98b-e6d6-479a-baad-badace0b2bc0",
+      "name": "Fetch Linked Assets",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        608,
+        240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "viMKJjf6zTwCwyy0",
+          "name": "Airtable Personal Access Token account"
+        }
+      },
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "appgMOSrdu95bw0nf"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tbl8HCdgugwL3SZjy"
+        },
+        "filterByFormula": "=FIND('{{ $json.id }}', ARRAYJOIN({Story}))",
+        "returnAll": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "6088e784-1903-47cf-aeb8-725ca330b984",
+      "name": "Validate & Build Carousel Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const story = $('Fetch Approved Stories').first().json;\nconst assets = $input.all().map(x => x.json).sort((a, b) => (a['Slide Index'] || 0) - (b['Slide Index'] || 0));\nif (assets.length !== 6) throw new Error('Expected 6 linked Assets for Story ' + story.id + ', got ' + assets.length);\nfor (let i = 0; i < 6; i++) {\n  if (assets[i]['Slide Index'] !== i + 1) throw new Error('Missing Slide Index ' + (i + 1));\n  if (!assets[i].Credit) throw new Error('Missing Credit on Slide ' + (i + 1));\n}\nreturn [{\n  json: {\n    storyId: story.id,\n    title: story.Title,\n    pillar: story.Pillar,\n    story,\n    assets,\n    xThread: {\n      post1: (story.Title || '') + ' — ' + (story.Glance || ''),\n      post2: (story.Remember || '') + ' (1/2 → 2/2)'\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "49905506-a4b4-492c-9edf-403a28eb3bd3",
+      "name": "Render Carousel Slides",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        240
+      ],
+      "disabled": true,
+      "parameters": {
+        "command": "=node /Users/admin/Documents/My\\ Workspace/we-humanity-wf3c/scripts/render-carousel.js /tmp/wf4-payload.json /Users/admin/Documents/My\\ Workspace/we-humanity-wf3c/renders/{{ $json.storyId }}"
+      }
+    },
+    {
+      "id": "791a827b-a37d-492f-9edb-84e238486257",
+      "name": "Set Carousel Review Pending",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1280,
+        240
+      ],
+      "disabled": true,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "viMKJjf6zTwCwyy0",
+          "name": "Airtable Personal Access Token account"
+        }
+      },
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "appgMOSrdu95bw0nf"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tblPgv6MsUEMNnvCn"
+        },
+        "id": "={{ .storyId }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Carousel Review Pending"
+          }
+        }
+      }
+    },
+    {
+      "id": "71d87f98-1271-4fa4-83e5-58761284c2f3",
+      "name": "Publish LinkedIn Carousel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1504,
+        112
+      ],
+      "disabled": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/rest/posts"
+      }
+    },
+    {
+      "id": "3f0fe165-8380-453d-85df-677693bf641c",
+      "name": "Publish Instagram Carousel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1504,
+        240
+      ],
+      "disabled": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/me/media"
+      }
+    },
+    {
+      "id": "1971c46c-5c6e-4a2b-9820-859486ca90cf",
+      "name": "Publish X Thread",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1504,
+        368
+      ],
+      "disabled": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.x.com/2/tweets"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Approved Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Approved Stories": {
+      "main": [
+        [
+          {
+            "node": "Fetch Linked Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Linked Assets": {
+      "main": [
+        [
+          {
+            "node": "Validate & Build Carousel Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Build Carousel Payload": {
+      "main": [
+        [
+          {
+            "node": "Render Carousel Slides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Carousel Slides": {
+      "main": [
+        [
+          {
+            "node": "Set Carousel Review Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Carousel Review Pending": {
+      "main": [
+        [
+          {
+            "node": "Publish LinkedIn Carousel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Publish Instagram Carousel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Publish X Thread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
