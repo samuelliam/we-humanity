@@ -10,6 +10,7 @@ const PORT = Number(process.env.APP_PORT || 5695);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const RENDERS_DIR = path.join(ROOT_DIR, 'renders');
+const ASSETS_DIR = path.join(ROOT_DIR, 'assets');
 const N8N_BIN = process.env.N8N_BIN || '/Users/admin/.npm-global/bin/n8n';
 const N8N_DB = process.env.N8N_DB || path.join(process.env.HOME || '', '.n8n', 'database.sqlite');
 
@@ -222,6 +223,36 @@ function toSqliteUtc(isoString) {
   return isoString.replace('T', ' ').replace('Z', '');
 }
 
+function parseSqliteUtcMs(sqlTs) {
+  if (!sqlTs) return null;
+  const iso = String(sqlTs).includes('T') ? sqlTs : String(sqlTs).replace(' ', 'T') + 'Z';
+  const ms = new Date(iso).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function countRecentFiles(dir, sinceMs, extRegex) {
+  if (!sinceMs || !fs.existsSync(dir)) return 0;
+  try {
+    let count = 0;
+    for (const file of fs.readdirSync(dir)) {
+      if (!extRegex.test(file)) continue;
+      const stat = fs.statSync(path.join(dir, file));
+      if (stat.mtimeMs >= sinceMs - 1000) count += 1;
+    }
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
+function computeDurationSec(startTs, stopTs) {
+  const startMs = parseSqliteUtcMs(startTs);
+  if (!startMs) return null;
+  const stopMs = stopTs ? parseSqliteUtcMs(stopTs) : Date.now();
+  if (!stopMs) return null;
+  return Math.max(1, Math.round((stopMs - startMs) / 1000));
+}
+
 function getPipelineStatus() {
   const refRun = currentPipelineRun || lastPipelineRun;
   let sinceSql = null;
@@ -254,7 +285,11 @@ function getPipelineStatus() {
     if (!byWf.has(row.workflowId)) byWf.set(row.workflowId, row);
   }
 
-  const wf2Exec = byWf.get(PIPELINE_ENTRY_ID);
+  const wf1Exec = byWf.get('WHWF1ResearchStory1') || null;
+  const wf2Exec = byWf.get(PIPELINE_ENTRY_ID) || null;
+  const wf3cExec = byWf.get('Bnv0SFCD8oerXXhs') || null;
+  const wf4Exec = byWf.get('eSrdqP9mk6hg6Xls') || null;
+
   if (currentPipelineRun && wf2Exec && wf2Exec.stoppedAt) {
     currentPipelineRun.status = wf2Exec.status === 'success' ? 'success' : 'error';
     currentPipelineRun.finishedAt = new Date().toISOString();
@@ -266,25 +301,80 @@ function getPipelineStatus() {
     }
   }
 
-  const wf2Done = wf2Exec?.status === 'success';
+  const wf2StartMs = parseSqliteUtcMs(wf2Exec?.startedAt);
+  const idleMode = !refRun && !sinceSql;
+
   const stages = PIPELINE_STAGES.map((stage) => {
-    const exec = byWf.get(stage.id) || null;
-    let state = 'waiting';
-    if (exec) {
-      state = exec.status === 'running' ? 'running' : exec.status === 'success' ? 'success' : 'error';
-    } else if (stage.optional && (wf2Done || byWf.has('Bnv0SFCD8oerXXhs'))) {
-      state = 'skipped';
-    } else if (!refRun && !sinceSql) {
-      state = 'idle';
-    } else if (currentPipelineRun && stage.id === PIPELINE_ENTRY_ID) {
-      state = 'running';
+    let state = idleMode ? 'idle' : 'waiting';
+    let activeStartedAt = null;
+    let activeStoppedAt = null;
+    let detail = null;
+
+    if (stage.id === 'WHWF1ResearchStory1') {
+      if (wf1Exec) {
+        state = wf1Exec.status === 'running' ? 'running' : wf1Exec.status === 'success' ? 'success' : 'error';
+        activeStartedAt = wf1Exec.startedAt;
+        activeStoppedAt = wf1Exec.stoppedAt;
+        if (state === 'running') detail = 'Researching archival story candidates with Gemini…';
+      } else if (wf2Exec && (wf3cExec || wf2Exec.stoppedAt || (wf2StartMs && Date.now() - wf2StartMs > 4000))) {
+        state = 'skipped';
+      }
+    } else if (stage.id === 'Ifx5YGd9WgDVqvRF') {
+      const ownStart = wf1Exec?.stoppedAt || wf2Exec?.startedAt || null;
+      if (wf1Exec?.status === 'running') {
+        state = 'waiting';
+      } else if (wf3cExec) {
+        state = 'success';
+        activeStartedAt = ownStart;
+        activeStoppedAt = wf3cExec.startedAt;
+      } else if (wf2Exec) {
+        state = wf2Exec.status === 'running' ? 'running' : wf2Exec.status === 'success' ? 'success' : 'error';
+        activeStartedAt = ownStart;
+        activeStoppedAt = wf2Exec.stoppedAt;
+        if (state === 'running') detail = 'Drafting story sections (Glance, Explore, Deep Dive, Remember)…';
+      } else if (currentPipelineRun) {
+        state = 'running';
+        activeStartedAt = toSqliteUtc(new Date(currentPipelineRun.startedAt).toISOString());
+        detail = 'Starting WF2 workflow…';
+      }
+    } else if (stage.id === 'Bnv0SFCD8oerXXhs') {
+      if (wf4Exec) {
+        state = 'success';
+        activeStartedAt = wf3cExec?.startedAt || null;
+        activeStoppedAt = wf4Exec.startedAt;
+      } else if (wf3cExec) {
+        state = wf3cExec.status === 'running' ? 'running' : wf3cExec.status === 'success' ? 'success' : 'error';
+        activeStartedAt = wf3cExec.startedAt;
+        activeStoppedAt = wf3cExec.stoppedAt;
+        if (state === 'running') {
+          const n = countRecentFiles(ASSETS_DIR, parseSqliteUtcMs(wf3cExec.startedAt), /_slide_\d+\.(jpe?g|png|webp)$/i);
+          detail = n === 0
+            ? 'Planning slides & searching Wikimedia / Openverse…'
+            : `Downloaded / generated ${n} slide image${n === 1 ? '' : 's'} & uploading to Airtable…`;
+        }
+      }
+    } else if (stage.id === 'eSrdqP9mk6hg6Xls') {
+      if (wf4Exec) {
+        state = wf4Exec.status === 'running' ? 'running' : wf4Exec.status === 'success' ? 'success' : 'error';
+        activeStartedAt = wf4Exec.startedAt;
+        activeStoppedAt = wf4Exec.stoppedAt;
+        if (state === 'running') {
+          const n = countRecentFiles(RENDERS_DIR, parseSqliteUtcMs(wf4Exec.startedAt), /_slide_\d+\.png$/i);
+          detail = n === 0
+            ? 'Polishing carousel copy & building slide SVGs…'
+            : `Rendered ${n} slide PNG${n === 1 ? '' : 's'} (1080×1350)…`;
+        }
+      }
     }
+
     return {
       code: stage.code,
       label: stage.label,
       state,
-      startedAt: exec?.startedAt || null,
-      stoppedAt: exec?.stoppedAt || null,
+      startedAt: activeStartedAt,
+      stoppedAt: activeStoppedAt,
+      durationSec: computeDurationSec(activeStartedAt, activeStoppedAt),
+      detail,
     };
   });
 

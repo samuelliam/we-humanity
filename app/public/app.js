@@ -44,6 +44,9 @@ const lightboxCloseBtn = document.getElementById('lightbox-close');
 let stories = [];
 let selectedStoryId = null;
 let pollTimer = null;
+let uiTickTimer = null;
+let lastPipelineData = null;
+let lastPipelineFetchedAt = 0;
 let lightboxSlides = [];
 let lightboxIndex = 0;
 
@@ -324,27 +327,50 @@ function summarizeError(raw) {
   return meaningful.length > 160 ? meaningful.slice(0, 157) + '…' : meaningful;
 }
 
+function formatDuration(sec) {
+  if (!Number.isFinite(sec) || sec <= 0) return '';
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+function getEffectiveDuration(stage) {
+  if (!stage.durationSec) return null;
+  if (stage.state !== 'running') return stage.durationSec;
+  const extra = Math.max(0, Math.floor((Date.now() - lastPipelineFetchedAt) / 1000));
+  return stage.durationSec + extra;
+}
+
 function renderPipeline(data) {
   const running = Boolean(data.running);
   const stages = data.stages || [];
+  const active = stages.find((s) => s.state === 'running') || null;
   const completedCount = stages.filter((s) => s.state === 'success' || s.state === 'skipped').length;
   const hasError = stages.some((s) => s.state === 'error') || data.run?.status === 'error';
 
+  const activeSec = active ? getEffectiveDuration(active) : null;
+  const activeTimeTag = activeSec ? ` (${formatDuration(activeSec)})` : '';
   runPipelineBtn.disabled = running;
-  runPipelineBtn.textContent = running ? 'Running Pipeline…' : 'Generate Story & Carousel';
+  runPipelineBtn.textContent = running
+    ? (active ? `Running ${active.code} · ${active.label}${activeTimeTag}…` : 'Starting Pipeline…')
+    : 'Generate Story & Carousel';
 
   const stateKey = running ? 'running' : hasError ? 'error' : completedCount === stages.length && stages.length ? 'done' : 'idle';
   pipelineBadgeEl.dataset.state = stateKey;
-  pipelineBadgeEl.textContent = running ? 'Running' : hasError ? 'Error' : stateKey === 'done' ? 'Done' : 'Ready';
+  pipelineBadgeEl.textContent = running ? (active ? active.code : 'Running') : hasError ? 'Error' : stateKey === 'done' ? 'Done' : 'Ready';
   pipelineBarEl.max = stages.length || 4;
-  pipelineBarEl.value = completedCount;
+  pipelineBarEl.value = completedCount + (active ? 0.45 : 0);
   pipelineSummaryEl.dataset.error = hasError ? 'true' : 'false';
 
   if (running) {
-    const active = stages.find((s) => s.state === 'running');
-    pipelineSummaryEl.textContent = active
-      ? `Running ${active.code} (${active.label})…`
-      : 'Starting pipeline…';
+    if (active) {
+      pipelineSummaryEl.textContent = active.detail
+        ? `${active.code} (${active.label}): ${active.detail}`
+        : `Running ${active.code} (${active.label})…`;
+    } else {
+      pipelineSummaryEl.textContent = 'Starting pipeline…';
+    }
     pipelineErrorDetailsEl.hidden = true;
   } else if (hasError) {
     const rawErr = data.run?.error || 'Pipeline encountered an error.';
@@ -370,9 +396,19 @@ function renderPipeline(data) {
   for (const stage of stages) {
     const li = document.createElement('li');
     li.className = 'stage-item';
+    li.dataset.state = stage.state;
+    const sec = getEffectiveDuration(stage);
+    const durText = sec ? formatDuration(sec) : '';
+    const stateLabel = stage.state === 'success' ? 'Done' : stage.state;
     li.innerHTML = `
-      <span class="status-dot" data-status="${stage.state}">${stage.code} · ${stage.label}</span>
-      <span class="stage-state">${stage.state}</span>
+      <div class="stage-row">
+        <span class="status-dot" data-status="${stage.state}">${stage.code} · ${stage.label}</span>
+        <span class="stage-meta">
+          ${durText ? `<span class="stage-duration">${durText}</span>` : ''}
+          <span class="stage-state">${stateLabel}</span>
+        </span>
+      </div>
+      ${stage.detail ? `<p class="stage-detail">${stage.detail}</p>` : ''}
     `;
     stageListEl.appendChild(li);
   }
@@ -382,6 +418,15 @@ function renderPipeline(data) {
   } else if (!running && pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
+  }
+
+  if (running && !uiTickTimer) {
+    uiTickTimer = setInterval(() => {
+      if (lastPipelineData?.running) renderPipeline(lastPipelineData);
+    }, 1000);
+  } else if (!running && uiTickTimer) {
+    clearInterval(uiTickTimer);
+    uiTickTimer = null;
   }
 }
 
@@ -535,7 +580,9 @@ async function loadAll() {
     fetch('/api/stories'),
   ]);
   if (pipeRes.ok) {
-    renderPipeline(await pipeRes.json());
+    lastPipelineData = await pipeRes.json();
+    lastPipelineFetchedAt = Date.now();
+    renderPipeline(lastPipelineData);
   }
   if (stRes.ok) {
     const stData = await stRes.json();

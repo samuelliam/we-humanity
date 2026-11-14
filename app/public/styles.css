@@ -252,14 +252,44 @@ body {
 
 .stage-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.25rem;
   font-size: 0.8rem;
-  padding: 0.4rem 0.6rem;
+  padding: 0.45rem 0.65rem;
   border-radius: 8px;
   background: #fcfbf8;
   border: 1px solid var(--border);
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.stage-item[data-state="running"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.stage-item[data-state="error"] {
+  background: var(--err-soft);
+  border-color: rgb(185 28 28 / 0.45);
+}
+
+.stage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.stage-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage-duration {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ink-muted);
 }
 
 .stage-state {
@@ -269,25 +299,56 @@ body {
   color: var(--ink-muted);
 }
 
+.stage-item[data-state="running"] .stage-state,
+.stage-item[data-state="running"] .stage-duration {
+  color: var(--accent);
+}
+
+.stage-item[data-state="success"] .stage-state {
+  color: var(--ok);
+}
+
+.stage-item[data-state="error"] .stage-state {
+  color: var(--err);
+}
+
+.stage-detail {
+  margin: 0;
+  padding-inline-start: 0.95rem;
+  font-size: 0.73rem;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
 .status-dot {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.45rem;
   font-weight: 600;
 }
 
 .status-dot::before {
   content: "";
-  inline-size: 7px;
-  block-size: 7px;
+  inline-size: 8px;
+  block-size: 8px;
   border-radius: 50%;
   background: var(--ink-muted);
+  flex: none;
 }
 
 .status-dot[data-status="success"]::before { background: var(--ok); }
 .status-dot[data-status="error"]::before { background: var(--err); }
-.status-dot[data-status="running"]::before { background: var(--warn); }
 .status-dot[data-status="skipped"]::before { background: #9ca3af; }
+.status-dot[data-status="running"]::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgb(29 78 216 / 0.25);
+  animation: stagePulse 1.2s ease-in-out infinite;
+}
+
+@keyframes stagePulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.75; }
+}
 
 .btn {
   border: 1px solid var(--border);
