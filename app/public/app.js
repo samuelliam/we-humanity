@@ -470,7 +470,7 @@ function renderSelectedStory() {
 
   storyPillarEl.textContent = story.pillar || 'WE, HUMANITY';
   storyTitleEl.textContent = story.title;
-  storySubmetaEl.textContent = `Story ID: ${story.storyId} · Rendered ${formatTime(story.renderedAt)}${story.approved ? ' · Approved' : ''}`;
+  storySubmetaEl.textContent = `Story ID: ${story.storyId} · Rendered ${formatTime(story.renderedAt)}${story.approved ? ' · Approved' : ''}${story.instagramPublished ? ' · Published to IG' : ''}`;
   if (exportZipBtn) {
     exportZipBtn.href = `/api/stories/${encodeURIComponent(story.storyId)}/export.zip`;
   }
@@ -478,6 +478,12 @@ function renderSelectedStory() {
     approveStoryBtn.textContent = story.approved ? 'Approved ✓' : 'Approve';
     approveStoryBtn.classList.toggle('btn-approved', Boolean(story.approved));
     approveStoryBtn.disabled = Boolean(story.approved);
+  }
+  if (publishIgBtn) {
+    publishIgBtn.textContent = story.instagramPublished ? 'Published to IG ✓' : 'Publish to IG';
+    publishIgBtn.classList.toggle('btn-approved', Boolean(story.instagramPublished));
+    publishIgBtn.disabled = Boolean(story.instagramPublished);
+    publishIgBtn.title = story.instagramPermalink ? `Published: ${story.instagramPermalink}` : 'Upload slides to Firebase Storage and publish carousel to @by.wehumanity';
   }
   igPillarSubEl.textContent = story.pillar || 'Design & Engineering';
 
@@ -564,6 +570,7 @@ const customSubjectInputEl = document.getElementById('custom-subject-input');
 const rerenderBtn = document.getElementById('rerender-btn');
 const stopPipelineBtn = document.getElementById('stop-pipeline-btn');
 const approveStoryBtn = document.getElementById('approve-story-btn');
+const publishIgBtn = document.getElementById('publish-ig-btn');
 const exportZipBtn = document.getElementById('export-zip-btn');
 
 async function triggerPipeline() {
@@ -638,7 +645,48 @@ if (approveStoryBtn) {
     try {
       const res = await fetch(`/api/stories/${encodeURIComponent(selectedStoryId)}/approve`, { method: 'POST' });
       if (res.ok) await loadAll();
-    } catch {}
+    } finally {
+      approveStoryBtn.disabled = false;
+    }
+  });
+}
+
+if (publishIgBtn) {
+  publishIgBtn.addEventListener('click', async () => {
+    if (!selectedStoryId) return;
+    publishIgBtn.disabled = true;
+    publishIgBtn.textContent = 'Publishing…';
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(selectedStoryId)}/publish-instagram`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        pipelineBadgeEl.dataset.state = 'error';
+        pipelineBadgeEl.textContent = 'IG Error';
+        pipelineSummaryEl.dataset.error = 'true';
+        pipelineSummaryEl.textContent = data.error || 'Failed to publish to Instagram.';
+        publishIgBtn.disabled = false;
+        publishIgBtn.textContent = 'Publish to IG';
+        return;
+      }
+      pipelineBadgeEl.dataset.state = 'done';
+      pipelineBadgeEl.textContent = 'Published';
+      pipelineSummaryEl.dataset.error = 'false';
+      pipelineSummaryEl.textContent = data.permalink
+        ? `Published to @by.wehumanity: ${data.permalink}`
+        : 'Published carousel to @by.wehumanity.';
+      await loadAll();
+    } catch (err) {
+      pipelineBadgeEl.dataset.state = 'error';
+      pipelineBadgeEl.textContent = 'IG Error';
+      pipelineSummaryEl.dataset.error = 'true';
+      pipelineSummaryEl.textContent = err.message || 'Network error publishing to Instagram.';
+      publishIgBtn.disabled = false;
+      publishIgBtn.textContent = 'Publish to IG';
+    }
   });
 }
 

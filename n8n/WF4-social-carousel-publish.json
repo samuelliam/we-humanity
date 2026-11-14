@@ -217,14 +217,15 @@
         2240,
         240
       ],
-      "disabled": true,
+      "disabled": false,
       "parameters": {
         "method": "POST",
-        "url": "https://graph.facebook.com/v21.0/me/media",
+        "url": "=http://127.0.0.1:5695/api/stories/{{ $json.id || $json.storyId }}/publish-instagram",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ caption: .instagramCaption, media_type: \"CAROUSEL\" }) }}"
-      }
+        "jsonBody": "={}"
+      },
+      "executeOnce": true
     },
     {
       "id": "1971c46c-5c6e-4a2b-9820-859486ca90cf",

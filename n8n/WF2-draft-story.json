@@ -9,6 +9,28 @@
     "isArchived": false,
     "nodes": [
       {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "days",
+                "daysInterval": 1,
+                "triggerAtHour": 9,
+                "triggerAtMinute": 0
+              }
+            ]
+          }
+        },
+        "id": "a8c9d1e2-4f5a-4b6c-9d7e-8f0a1b2c3d4e",
+        "name": "Daily Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -480,
+          120
+        ]
+      },
+      {
         "parameters": {},
         "name": "Manual Trigger",
         "type": "n8n-nodes-base.manualTrigger",
@@ -690,6 +712,17 @@
           [
             {
               "node": "Trigger WF3c Image Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Daily Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Search Backlog",
               "type": "main",
               "index": 0
             }

@@ -1,4 +1,7 @@
 renders/
 assets/
 .DS_Store
+.env
+firebase-service-account.json
+
 

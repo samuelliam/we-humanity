@@ -6,6 +6,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile, execFileSync } = require('child_process');
+const { loadDotEnv, publishStoryToInstagram } = require('../scripts/instagram-publisher');
+
+loadDotEnv();
 
 const PORT = Number(process.env.APP_PORT || 5695);
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -212,6 +215,9 @@ function getStories() {
       credits: meta.credits || [],
       approved: Boolean(meta.approved),
       approvedAt: meta.approvedAt || null,
+      instagramPublished: Boolean(meta.instagramPublished),
+      instagramPermalink: meta.instagramPermalink || null,
+      instagramPublishedAt: meta.instagramPublishedAt || null,
       renderedAt: meta.renderedAt || new Date(latestMtime).toISOString(),
       executionId: meta.executionId || null,
       slides,
@@ -516,12 +522,26 @@ function rerenderStory(storyId) {
   return { run, status: 202 };
 }
 
-function stopPipeline() {
-  if (!currentPipelineRun) {
-    return { error: 'No pipeline run is currently active', status: 409 };
+function markStuckExecutionsCanceled() {
+  if (!fs.existsSync(N8N_DB)) return 0;
+  try {
+    const out = execFileSync(
+      'sqlite3',
+      [
+        N8N_DB,
+        "UPDATE execution_entity SET status = 'canceled', finished = 1, stoppedAt = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE workflowId IN ('WHWF1ResearchStory1','Ifx5YGd9WgDVqvRF','Bnv0SFCD8oerXXhs','eSrdqP9mk6hg6Xls') AND status IN ('running', 'waiting', 'new'); SELECT changes();",
+      ],
+      { encoding: 'utf8', timeout: 3000 }
+    );
+    return Number(String(out || '').trim().split(/\s+/).pop() || 0);
+  } catch {
+    return 0;
   }
+}
 
-  const run = currentPipelineRun;
+function stopPipeline() {
+  const hadActiveRun = Boolean(currentPipelineRun);
+  const run = currentPipelineRun || lastPipelineRun || { id: `run_${Date.now()}`, startedAt: new Date().toISOString() };
   run.stopped = true;
   run.status = 'stopped';
   run.finishedAt = new Date().toISOString();
@@ -536,6 +556,11 @@ function stopPipeline() {
     currentChild = null;
     try { child.kill('SIGTERM'); } catch {}
     setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 1500);
+  }
+
+  const canceledRows = markStuckExecutionsCanceled();
+  if (!hadActiveRun && canceledRows === 0) {
+    return { error: 'No pipeline run is currently active', status: 409 };
   }
 
   return { run, status: 200 };
@@ -659,6 +684,20 @@ const server = http.createServer(async (req, res) => {
     const result = rerenderStory(rerenderMatch[1]);
     if (result.error) return sendJson(res, result.status, { error: result.error });
     return sendJson(res, result.status, { run: result.run });
+  }
+
+  const publishIgMatch = req.method === 'POST' && pathname.match(/^\/api\/stories\/([^/]+)\/publish-instagram$/);
+  if (publishIgMatch) {
+    const cleanId = String(publishIgMatch[1] || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const story = getStories().find((s) => s.storyId === cleanId);
+    if (!story) return sendJson(res, 404, { error: 'Story not found' });
+    try {
+      const body = await readJsonBody(req);
+      const result = await publishStoryToInstagram(cleanId, { force: Boolean(body.force) });
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, 500, { error: err.message || 'Instagram publish failed' });
+    }
   }
 
   if (req.method === 'GET' && pathname.startsWith('/renders/')) {
