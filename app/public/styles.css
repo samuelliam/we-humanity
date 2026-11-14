@@ -454,6 +454,15 @@ body {
   grid-area: 1 / 1;
 }
 
+.tabpanels-stack > [role="tabpanel"][hidden] {
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tabpanels-stack > [role="tabpanel"]:not([hidden]) {
+  z-index: 1;
+}
+
 .panel-body {
   min-inline-size: 0;
 }
@@ -487,8 +496,14 @@ body {
   border-block-end: 1px solid var(--border);
 }
 
-.slide-counter-pill {
+.ig-header-actions {
   margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.slide-counter-pill {
   font-size: 0.74rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -496,6 +511,13 @@ body {
   border-radius: 999px;
   background: var(--surface-muted);
   color: var(--ink);
+}
+
+.btn-icon {
+  padding: 0.24rem 0.55rem;
+  min-block-size: 28px;
+  font-size: 0.75rem;
+  background: var(--surface-subtle);
 }
 
 .avatar {
@@ -830,5 +852,22 @@ body {
   max-block-size: 76dvb;
   margin-inline: auto;
   border-radius: 8px;
+}
+
+.lightbox-dialog:fullscreen {
+  max-inline-size: 100vw;
+  max-block-size: 100dvb;
+  inline-size: 100vw;
+  block-size: 100dvb;
+  border-radius: 0;
+  border: 0;
+}
+
+.lightbox-dialog:fullscreen .lightbox-stage {
+  block-size: calc(100dvb - 58px);
+}
+
+.lightbox-dialog:fullscreen .lightbox-stage img {
+  max-block-size: 90dvb;
 }
 

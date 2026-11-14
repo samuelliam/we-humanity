@@ -16,6 +16,7 @@ const storyTitleEl = document.getElementById('story-title');
 const storySubmetaEl = document.getElementById('story-submeta');
 const igPillarSubEl = document.getElementById('ig-pillar-sub');
 const igSlideCounterEl = document.getElementById('ig-slide-counter');
+const igFullscreenBtn = document.getElementById('ig-fullscreen-btn');
 const igCaptionEl = document.getElementById('ig-caption');
 const liCaptionEl = document.getElementById('li-caption');
 const xPost1El = document.getElementById('x-post-1');
@@ -35,6 +36,7 @@ const lightboxEl = document.getElementById('slide-lightbox');
 const lightboxTitleEl = document.getElementById('lightbox-title');
 const lightboxImgEl = document.getElementById('lightbox-img');
 const lightboxDownloadEl = document.getElementById('lightbox-download');
+const lightboxNativeFsBtn = document.getElementById('lightbox-native-fs');
 const lightboxPrevBtn = document.getElementById('lightbox-prev');
 const lightboxNextBtn = document.getElementById('lightbox-next');
 const lightboxCloseBtn = document.getElementById('lightbox-close');
@@ -264,13 +266,44 @@ lightboxNextBtn.addEventListener('click', () => {
   }
 });
 
-lightboxCloseBtn.addEventListener('click', () => lightboxEl.close());
+function closeLightbox() {
+  if (document.fullscreenElement === lightboxEl) {
+    document.exitFullscreen().catch(() => {});
+  }
+  lightboxEl.close();
+}
+
+lightboxCloseBtn.addEventListener('click', closeLightbox);
 lightboxEl.addEventListener('click', (event) => {
-  if (event.target === lightboxEl) lightboxEl.close();
+  if (event.target === lightboxEl) closeLightbox();
 });
 lightboxEl.addEventListener('keydown', (event) => {
   if (event.key === 'ArrowLeft') lightboxPrevBtn.click();
   else if (event.key === 'ArrowRight') lightboxNextBtn.click();
+});
+
+lightboxNativeFsBtn.addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement === lightboxEl) {
+      await document.exitFullscreen();
+    } else if (lightboxEl.requestFullscreen) {
+      await lightboxEl.requestFullscreen();
+    }
+  } catch {
+    // Browser blocked fullscreen; lightbox modal remains open
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  lightboxNativeFsBtn.textContent = document.fullscreenElement === lightboxEl
+    ? 'Exit Fullscreen'
+    : 'True Fullscreen';
+});
+
+igFullscreenBtn.addEventListener('click', () => {
+  if (!lightboxSlides.length) return;
+  const idx = pendingIndex !== null ? pendingIndex : getSlideIndexFromScroll();
+  openLightbox(lightboxSlides, idx);
 });
 
 // --- Data & rendering ---
@@ -409,6 +442,7 @@ function renderSelectedStory() {
     filename: s.filename,
     alt: `${story.title} — slide ${i + 1}`,
   }));
+  lightboxSlides = storyLightboxSlides;
 
   story.slides.forEach((slide, idx) => {
     const slideEl = document.createElement('div');
