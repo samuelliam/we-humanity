@@ -42,7 +42,7 @@
       "alwaysOutputData": true,
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 5000,
+      "waitBetweenTries": 2000,
       "credentials": {
         "airtableTokenApi": {
           "id": "viMKJjf6zTwCwyy0",
@@ -64,7 +64,11 @@
           "value": "tblPgv6MsUEMNnvCn"
         },
         "returnAll": true,
-        "options": {}
+        "options": {
+          "fields": [
+            "Title"
+          ]
+        }
       }
     },
     {
@@ -90,8 +94,8 @@
         240
       ],
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 5000,
+      "maxTries": 4,
+      "waitBetweenTries": 3000,
       "credentials": {
         "googlePalmApi": {
           "id": "aFRned7DK9GTsDf4",
@@ -143,7 +147,7 @@
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 5000,
+      "waitBetweenTries": 2000,
       "credentials": {
         "airtableTokenApi": {
           "id": "viMKJjf6zTwCwyy0",

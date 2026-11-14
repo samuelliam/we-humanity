@@ -110,7 +110,10 @@
             "id": "aFRned7DK9GTsDf4",
             "name": "Google Gemini(PaLM) Api account"
           }
-        }
+        },
+        "retryOnFail": true,
+        "maxTries": 4,
+        "waitBetweenTries": 3000
       },
       {
         "parameters": {
@@ -127,21 +130,133 @@
       },
       {
         "parameters": {
-          "method": "POST",
-          "url": "https://api.airtable.com/v0/appgMOSrdu95bw0nf/tblPgv6MsUEMNnvCn",
-          "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "airtableTokenApi",
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ fields: { Title: $json.title, Pillar: $json.pillar, Status: $json.status, Glance: $json.glance, Explore: $json.explore, \"Deep Dive\": $json.deep_dive, Remember: $json.remember, Sources: $json.sources, Flags: $json.flags, Backlog: [$json.backlogId] } }) }}",
-          "options": {
-            "timeout": 15000
-          }
+          "operation": "create",
+          "base": {
+            "__rl": true,
+            "value": "appgMOSrdu95bw0nf",
+            "mode": "id"
+          },
+          "table": {
+            "__rl": true,
+            "value": "tblPgv6MsUEMNnvCn",
+            "mode": "id"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Title": "={{ $json.title }}",
+              "Pillar": "={{ $json.pillar }}",
+              "Status": "={{ $json.status }}",
+              "Glance": "={{ $json.glance }}",
+              "Explore": "={{ $json.explore }}",
+              "Deep Dive": "={{ $json.deep_dive }}",
+              "Remember": "={{ $json.remember }}",
+              "Sources": "={{ $json.sources }}",
+              "Flags": "={{ $json.flags }}",
+              "Backlog": "={{ [$json.backlogId] }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "Title",
+                "displayName": "Title",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Pillar",
+                "displayName": "Pillar",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Status",
+                "displayName": "Status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Glance",
+                "displayName": "Glance",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Explore",
+                "displayName": "Explore",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Deep Dive",
+                "displayName": "Deep Dive",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Remember",
+                "displayName": "Remember",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Sources",
+                "displayName": "Sources",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Flags",
+                "displayName": "Flags",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Backlog",
+                "displayName": "Backlog",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "array",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
         },
         "id": "f48c7164-ce1f-4d39-92c7-75c1c7cfa891",
         "name": "Create Story",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
         "position": [
           2240,
           0
@@ -158,21 +273,55 @@
       },
       {
         "parameters": {
-          "method": "PATCH",
-          "url": "={{ \"https://api.airtable.com/v0/appgMOSrdu95bw0nf/tblcmvhYzCFMnUYj6/\" + $('Parse and Flag').item.json.backlogId }}",
-          "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "airtableTokenApi",
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ fields: { Status: \"used\" } }) }}",
-          "options": {
-            "timeout": 15000
-          }
+          "operation": "update",
+          "base": {
+            "__rl": true,
+            "value": "appgMOSrdu95bw0nf",
+            "mode": "id"
+          },
+          "table": {
+            "__rl": true,
+            "value": "tblcmvhYzCFMnUYj6",
+            "mode": "id"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "id": "={{ $('Parse and Flag').item.json.backlogId }}",
+              "Status": "used"
+            },
+            "matchingColumns": [
+              "id"
+            ],
+            "schema": [
+              {
+                "id": "id",
+                "displayName": "id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Status",
+                "displayName": "Status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
         },
         "id": "1280b5b3-0c24-4170-9fef-fab4deb1be42",
         "name": "Mark Backlog Used",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
         "position": [
           2464,
           0
@@ -310,7 +459,11 @@
           "filterByFormula": "={{ \"LOWER({Title})=LOWER('\" + String($json.Title || '').replace(/'/g, \"\\\\'\") + \"')\" }}",
           "returnAll": false,
           "limit": 1,
-          "options": {}
+          "options": {
+            "fields": [
+              "Title"
+            ]
+          }
         }
       },
       {

@@ -53,11 +53,11 @@
         },
         "retryOnFail": true,
         "maxTries": 3,
-        "waitBetweenTries": 5000
+        "waitBetweenTries": 2000
       },
       {
         "parameters": {
-          "jsCode": "const s=$json; const prompt=\"You are planning the six slides of a social carousel for WE, HUMANITY, a reverent but not stuffy series about human creativity, design and craftsmanship.\\n\\nStory title: {{title}}\\nPillar: {{pillar}}\\nGlance: {{glance}}\\nExplore: {{explore}}\\nDeep dive: {{deep_dive}}\\nRemember: {{remember}}\\n\\nRules:\\n- Exactly 6 slides. Slide 1 is the cover; slide 6 carries the Remember line.\\n- For each slide, name the REAL subject to photograph: a specific object, person, place, or drawing that exists and can be found in a museum or photo archive (e.g. \\\"Bialetti Moka Express stovetop coffee maker, 1933 model\\\"). Do not invent products, models, or variants. If no concrete real subject fits, use \\\"abstract\\\" and explain in `note`.\\n- Give 2\\u20133 `search_queries` that would find that exact subject on Wikimedia Commons (short, specific, English).\\n- Do not invent facts. Do not write slide text or captions.\\n- Flag anything you are unsure exists as `\\\"verify\\\": true`.\\n\\nReturn ONLY JSON in this shape:\\n{\\\"slides\\\":[{\\\"slide_index\\\":1,\\\"slide_type\\\":\\\"cover|object|person|process|detail|remember\\\",\\\"subject\\\":\\\"...\\\",\\\"search_queries\\\":[\\\"...\\\",\\\"...\\\"],\\\"note\\\":\\\"\\\",\\\"verify\\\":false}, ... 6 items]}\\n\";return [{json:{...s,planningPrompt:prompt.replace('{{title}}',s.Title).replace('{{pillar}}',s.Pillar).replace('{{glance}}',s.Glance).replace('{{explore}}',s.Explore).replace('{{deep_dive}}',s['Deep Dive']).replace('{{remember}}',s.Remember)}}];"
+          "jsCode": "const s=$json; const prompt=\"You are planning the slides (between 4 and 7 slides) of a social carousel for WE, HUMANITY, a reverent but not stuffy series about human creativity, design and craftsmanship.\\n\\nStory title: {{title}}\\nPillar: {{pillar}}\\nGlance: {{glance}}\\nExplore: {{explore}}\\nDeep dive: {{deep_dive}}\\nRemember: {{remember}}\\n\\nRules:\\n- Between 4 and 7 slides: choose the count that best fits the story's distinct visual beats without padding. Slide 1 is the cover; the final slide carries the Remember line.\\n- For each slide, name the REAL subject to photograph: a specific object, person, place, or drawing that exists and can be found in a museum or photo archive (e.g. \\\"Bialetti Moka Express stovetop coffee maker, 1933 model\\\"). Do not invent products, models, or variants. If no concrete real subject fits, use \\\"abstract\\\" and explain in `note`.\\n- Give 2\\u20133 `search_queries` that would find that exact subject on Wikimedia Commons (short, specific, English).\\n- Do not invent facts. Do not write slide text or captions.\\n- Flag anything you are unsure exists as `\\\"verify\\\": true`.\\n\\nReturn ONLY JSON in this shape:\\n{\\\"slides\\\":[{\\\"slide_index\\\":1,\\\"slide_type\\\":\\\"cover|object|person|process|detail|remember\\\",\\\"subject\\\":\\\"...\\\",\\\"search_queries\\\":[\\\"...\\\",\\\"...\\\"],\\\"note\\\":\\\"\\\",\\\"verify\\\":false}, ... 4 to 7 items]}\\n\";return [{json:{...s,planningPrompt:prompt.replace(\"{{title}}\",s.Title).replace(\"{{pillar}}\",s.Pillar).replace(\"{{glance}}\",s.Glance).replace(\"{{explore}}\",s.Explore).replace(\"{{deep_dive}}\",s[\"Deep Dive\"]).replace(\"{{remember}}\",s.Remember)}}];"
         },
         "id": "d68da0be-fd66-4733-802d-826c7e62217d",
         "name": "Build Planning Prompt",
@@ -100,11 +100,14 @@
             "id": "aFRned7DK9GTsDf4",
             "name": "Google Gemini(PaLM) Api account"
           }
-        }
+        },
+        "retryOnFail": true,
+        "maxTries": 4,
+        "waitBetweenTries": 3000
       },
       {
         "parameters": {
-          "jsCode": "const x=$input.first().json;\nlet p=x;\nif(!Array.isArray(x)&&!x.slides){\nconst raw=(x.content?.parts?.map(p=>p.text||'').join('')||x.text||x.output||'').replace(/```(?:json)?/g,'').trim();\np=JSON.parse(raw);\n}\nconst slides=Array.isArray(p)?p:p.slides;\nif(!Array.isArray(slides)||slides.length!==6)throw new Error('Invalid slide plan: expected exactly 6 slides');\nconst seen=new Set();\nreturn slides.map((s,i)=>{if(!Number.isInteger(s.slide_index)||s.slide_index<1||s.slide_index>6||seen.has(s.slide_index)||!s.subject||!s.slide_type||!Array.isArray(s.search_queries)||s.search_queries.length<2||s.search_queries.length>3||s.search_queries.some(q=>typeof q!=='string'||!q.trim()))throw new Error('Invalid slide plan entry '+(i+1));seen.add(s.slide_index);return {json:s,pairedItem:{item:0}};});"
+          "jsCode": "const x=$input.first().json;\nlet p=x;\nif(!Array.isArray(x)&&!x.slides){\nconst raw=(x.content?.parts?.map(p=>p.text||\"\").join(\"\")||x.text||x.output||\"\").replace(/```(?:json)?/g,\"\").trim();\np=JSON.parse(raw);\n}\nconst slides=Array.isArray(p)?p:p.slides;\nif(!Array.isArray(slides)||slides.length<4||slides.length>7)throw new Error(\"Invalid slide plan: expected 4 to 7 slides\");\nconst seen=new Set();\nreturn slides.map((s,i)=>{if(!Number.isInteger(s.slide_index)||s.slide_index<1||s.slide_index>slides.length||seen.has(s.slide_index)||!s.subject||!s.slide_type||!Array.isArray(s.search_queries)||s.search_queries.length<2||s.search_queries.length>3||s.search_queries.some(q=>typeof q!==\"string\"||!q.trim()))throw new Error(\"Invalid slide plan entry \"+(i+1));seen.add(s.slide_index);return {json:s,pairedItem:{item:0}};});"
         },
         "id": "b32afe51-6f57-423a-a23c-0294011e70c4",
         "name": "Validate Plan",
@@ -216,7 +219,9 @@
             "id": "aFRned7DK9GTsDf4",
             "name": "Google Gemini(PaLM) Api account"
           }
-        }
+        },
+        "maxTries": 4,
+        "waitBetweenTries": 3000
       },
       {
         "parameters": {
@@ -233,35 +238,40 @@
       },
       {
         "parameters": {
-          "method": "GET",
-          "url": "={{ \"https://api.airtable.com/v0/appgMOSrdu95bw0nf/tblPgv6MsUEMNnvCn/\" + $('Get Next Story').first().json.id }}",
-          "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "airtableTokenApi",
-          "options": {
-            "timeout": 15000
-          }
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "appgMOSrdu95bw0nf"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "tblPgv6MsUEMNnvCn"
+          },
+          "id": "={{ $('Get Next Story').first().json.id }}",
+          "options": {}
         },
         "id": "dfc8ebcf-9230-445a-b316-d44f3bc7034a",
         "name": "Read Current Story",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
         "position": [
           2944,
           256
         ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000,
         "credentials": {
           "airtableTokenApi": {
             "id": "viMKJjf6zTwCwyy0",
             "name": "Airtable Personal Access Token account"
           }
-        },
-        "retryOnFail": true,
-        "maxTries": 3,
-        "waitBetweenTries": 2000
+        }
       },
       {
         "parameters": {
-          "jsCode": "const s=$input.first().json;const f=s.fields||s;const choices=$('Collect Choices').all().map(x=>x.json);const bad=choices.filter(c=>!['selected','text_only'].includes(c.result));const flags=(f.Flags||'').split(';').map(x=>x.trim()).filter(Boolean);if(bad.length&&!flags.includes('image needs review'))flags.push('image needs review');const log='WF3c '+new Date().toISOString()+'\\n'+choices.map(c=>'Slide '+c.slide_index+': '+c.subject+' — '+c.result+' ('+c.confidence+'): '+c.reason).join('\\n');return [{json:{id:s.id,Flags:flags.join('; '),'Reviewer Notes':(f['Reviewer Notes']?f['Reviewer Notes']+'\\n\\n':'')+log}}];"
+          "jsCode": "const s=$input.first().json;const choices=$('Collect Choices').all().map(x=>x.json);const bad=choices.filter(c=>!['selected','text_only'].includes(c.result));const flags=(s.Flags||'').split(';').map(x=>x.trim()).filter(Boolean);if(bad.length&&!flags.includes('image needs review'))flags.push('image needs review');const log='WF3c '+new Date().toISOString()+'\\n'+choices.map(c=>'Slide '+c.slide_index+': '+c.subject+' — '+c.result+' ('+c.confidence+'): '+c.reason).join('\\n');return [{json:{id:s.id,Flags:flags.join('; '),'Reviewer Notes':(s['Reviewer Notes']?s['Reviewer Notes']+'\\n\\n':'')+log}}];"
         },
         "id": "fd1c2659-7f1a-4ebd-b08d-f6e47ef37539",
         "name": "Summarize Research",
@@ -274,34 +284,78 @@
       },
       {
         "parameters": {
-          "method": "PATCH",
-          "url": "={{ \"https://api.airtable.com/v0/appgMOSrdu95bw0nf/tblPgv6MsUEMNnvCn/\" + $json.id }}",
-          "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "airtableTokenApi",
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ fields: { Flags: $json.Flags, \"Reviewer Notes\": $json['Reviewer Notes'] } }) }}",
-          "options": {
-            "timeout": 15000
-          }
+          "operation": "update",
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "appgMOSrdu95bw0nf"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "tblPgv6MsUEMNnvCn"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "id": "={{ $json.id }}",
+              "Flags": "={{ $json.Flags }}",
+              "Reviewer Notes": "={{ $json['Reviewer Notes'] }}"
+            },
+            "matchingColumns": [
+              "id"
+            ],
+            "schema": [
+              {
+                "id": "id",
+                "displayName": "id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Flags",
+                "displayName": "Flags",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Reviewer Notes",
+                "displayName": "Reviewer Notes",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
         },
         "id": "d39d5e1a-ee12-448c-ae66-0d36ee3b28a4",
         "name": "Record Research Review",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
         "position": [
           3392,
           256
         ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000,
         "credentials": {
           "airtableTokenApi": {
             "id": "viMKJjf6zTwCwyy0",
             "name": "Airtable Personal Access Token account"
           }
-        },
-        "retryOnFail": true,
-        "maxTries": 3,
-        "waitBetweenTries": 2000
+        }
       },
       {
         "parameters": {
@@ -356,7 +410,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const out=[];for(const [i,x]of $input.all().entries()){const m=$('Loop Image Downloads').all(1,$runIndex)[i].json;const b=await this.helpers.getBinaryDataBuffer(i,'data');if(!/^image\\//.test(x.binary?.data?.mimeType||'')||b.length<=10240||!(b[0]===0xff&&b[1]===0xd8)&&!(b[0]===0x89&&b[1]===0x50)&&!(b.toString('ascii',0,4)==='RIFF')&&!(b.toString('ascii',0,2)==='II')&&!(b.toString('ascii',0,2)==='MM'))throw new Error('Download verification failed for slide '+m.slide_index+': '+(x.binary?.data?.mimeType||'missing MIME')+', '+b.length+' bytes');out.push({json:{...m,localPath:'/Users/admin/Documents/My Workspace/we-humanity-wf3c/assets/'+$('Get Next Story').first().json.id+'_slide_'+m.slide_index+'.'+(x.binary.data.fileExtension||'jpg')},binary:x.binary,pairedItem:{item:i}});}return out;"
+          "jsCode": "const out=[];for(const [i,x]of $input.all().entries()){const m=$('Needs AI Generation?').itemMatching(i).json;const b=await this.helpers.getBinaryDataBuffer(i,'data');if(!/^image\\//.test(x.binary?.data?.mimeType||'')||b.length<=10240||!(b[0]===0xff&&b[1]===0xd8)&&!(b[0]===0x89&&b[1]===0x50)&&!(b.toString('ascii',0,4)==='RIFF')&&!(b.toString('ascii',0,2)==='II')&&!(b.toString('ascii',0,2)==='MM'))throw new Error('Download verification failed for slide '+m.slide_index+': '+(x.binary?.data?.mimeType||'missing MIME')+', '+b.length+' bytes');out.push({json:{...m,localPath:'/Users/admin/Documents/My Workspace/we-humanity-wf3c/assets/'+$('Get Next Story').first().json.id+'_slide_'+m.slide_index+'.'+(x.binary.data.fileExtension||'jpg')},binary:x.binary,pairedItem:{item:i}});}return out;"
         },
         "id": "5e2aa238-05cb-456b-ad07-d485819d1b7f",
         "name": "Verify Image",
@@ -398,21 +452,162 @@
       },
       {
         "parameters": {
-          "method": "POST",
-          "url": "https://api.airtable.com/v0/appgMOSrdu95bw0nf/tbl8HCdgugwL3SZjy",
-          "authentication": "predefinedCredentialType",
-          "nodeCredentialType": "airtableTokenApi",
-          "sendBody": true,
-          "specifyBody": "json",
-          "jsonBody": "={{ JSON.stringify({ fields: { Name: $json[\"Name\"], Story: $json[\"Story\"], Type: $json[\"Type\"], \"Source URL\": $json[\"Source URL\"], License: $json[\"License\"], \"AI Generated\": $json[\"AI Generated\"], \"Slide Index\": $json[\"Slide Index\"], \"Slide Type\": $json[\"Slide Type\"], Model: $json[\"Model\"], \"Generation Prompt\": $json[\"Generation Prompt\"], Credit: $json[\"Credit\"], \"Selection Reason\": $json[\"Selection Reason\"], Confidence: $json[\"Confidence\"] } }) }}",
-          "options": {
-            "timeout": 15000
-          }
+          "operation": "create",
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "appgMOSrdu95bw0nf"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "tbl8HCdgugwL3SZjy"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Name": "={{ $json[\"Name\"] }}",
+              "Story": "={{ $json[\"Story\"] }}",
+              "Type": "={{ $json[\"Type\"] }}",
+              "Source URL": "={{ $json[\"Source URL\"] }}",
+              "License": "={{ $json[\"License\"] }}",
+              "AI Generated": "={{ $json[\"AI Generated\"] }}",
+              "Slide Index": "={{ $json[\"Slide Index\"] }}",
+              "Slide Type": "={{ $json[\"Slide Type\"] }}",
+              "Model": "={{ $json[\"Model\"] }}",
+              "Generation Prompt": "={{ $json[\"Generation Prompt\"] }}",
+              "Credit": "={{ $json[\"Credit\"] }}",
+              "Selection Reason": "={{ $json[\"Selection Reason\"] }}",
+              "Confidence": "={{ $json[\"Confidence\"] }}"
+            },
+            "schema": [
+              {
+                "id": "Name",
+                "displayName": "Name",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Story",
+                "displayName": "Story",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "array",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Type",
+                "displayName": "Type",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Source URL",
+                "displayName": "Source URL",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "License",
+                "displayName": "License",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "AI Generated",
+                "displayName": "AI Generated",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "boolean",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Slide Index",
+                "displayName": "Slide Index",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Slide Type",
+                "displayName": "Slide Type",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Model",
+                "displayName": "Model",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Generation Prompt",
+                "displayName": "Generation Prompt",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Credit",
+                "displayName": "Credit",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Selection Reason",
+                "displayName": "Selection Reason",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "id": "Confidence",
+                "displayName": "Confidence",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
         },
         "id": "ecdbdf5a-eaed-404b-bc62-553fc60d7ddd",
         "name": "Create Asset",
-        "type": "n8n-nodes-base.httpRequest",
-        "typeVersion": 4.2,
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
         "position": [
           4960,
           256
@@ -423,6 +618,7 @@
             "name": "Airtable Personal Access Token account"
           }
         },
+        "disabled": false,
         "retryOnFail": true,
         "maxTries": 3,
         "waitBetweenTries": 2000
@@ -528,7 +724,7 @@
       },
       {
         "parameters": {
-          "amount": 1
+          "amount": 0.5
         },
         "id": "630007a5-f18a-4fc7-9721-f056553bb761",
         "name": "Pace Image Downloads",
@@ -581,7 +777,10 @@
             "id": "viMKJjf6zTwCwyy0",
             "name": "Airtable Personal Access Token account"
           }
-        }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
       },
       {
         "parameters": {
@@ -666,7 +865,10 @@
             "id": "viMKJjf6zTwCwyy0",
             "name": "Airtable Personal Access Token account"
           }
-        }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
       },
       {
         "parameters": {
@@ -722,8 +924,8 @@
           "options": {
             "batching": {
               "batch": {
-                "batchSize": 1,
-                "batchInterval": 1000
+                "batchSize": 3,
+                "batchInterval": 500
               }
             },
             "response": {
@@ -760,7 +962,7 @@
         "disabled": false,
         "retryOnFail": true,
         "maxTries": 3,
-        "waitBetweenTries": 5000
+        "waitBetweenTries": 2000
       },
       {
         "id": "2136a4ba-f4d8-49fd-aa2c-89cec7719435",
@@ -1035,13 +1237,13 @@
           }
         },
         "retryOnFail": true,
-        "maxTries": 2,
-        "waitBetweenTries": 2000,
+        "maxTries": 4,
+        "waitBetweenTries": 3000,
         "onError": "continueErrorOutput"
       },
       {
         "parameters": {
-          "jsCode": "const out = [];\nfor (const [i, x] of $input.all().entries()) {\n  const m = $('Loop Image Downloads').all(1, $runIndex)[i].json;\n  if (!x.binary?.data) throw new Error('No binary image returned for slide ' + m.slide_index);\n  const ext = x.binary.data.fileExtension || (String(x.binary.data.mimeType || '').includes('jpeg') ? 'jpg' : 'png');\n  const storyId = $('Get Next Story').first().json.id;\n  const localPath = `/Users/admin/Documents/My Workspace/we-humanity-wf3c/assets/${storyId}_slide_${m.slide_index}.${ext}`;\n  out.push({\n    json: {\n      ...m,\n      aiGenerated: true,\n      result: 'ai_generated',\n      confidence: 'medium',\n      chosen: {\n        pageUrl: `urn:ai:gemini-2.5-flash-image:${storyId}-slide-${m.slide_index}`,\n        licenceRaw: 'Custom / AI Generated (WE, HUMANITY)',\n        foundQuery: m.aiFallbackPrompt\n      },\n      localPath\n    },\n    binary: x.binary,\n    pairedItem: { item: i }\n  });\n}\nreturn out;"
+          "jsCode": "const out = [];\nfor (const [i, x] of $input.all().entries()) {\n  const m = $('Needs AI Generation?').itemMatching(i).json;\n  if (!x.binary?.data) throw new Error('No binary image returned for slide ' + m.slide_index);\n  const ext = x.binary.data.fileExtension || (String(x.binary.data.mimeType || '').includes('jpeg') ? 'jpg' : 'png');\n  const storyId = $('Get Next Story').first().json.id;\n  const localPath = `/Users/admin/Documents/My Workspace/we-humanity-wf3c/assets/${storyId}_slide_${m.slide_index}.${ext}`;\n  out.push({\n    json: {\n      ...m,\n      aiGenerated: true,\n      result: 'ai_generated',\n      confidence: 'medium',\n      chosen: {\n        pageUrl: `urn:ai:gemini-2.5-flash-image:${storyId}-slide-${m.slide_index}`,\n        licenceRaw: 'Custom / AI Generated (WE, HUMANITY)',\n        foundQuery: m.aiFallbackPrompt\n      },\n      localPath\n    },\n    binary: x.binary,\n    pairedItem: { item: i }\n  });\n}\nreturn out;"
         },
         "id": "normalize-ai-image",
         "name": "Normalize AI Image",
