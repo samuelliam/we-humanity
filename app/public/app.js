@@ -2,6 +2,8 @@ const runPipelineBtn = document.getElementById('run-pipeline-btn');
 const pipelineBadgeEl = document.getElementById('pipeline-status-badge');
 const pipelineBarEl = document.getElementById('pipeline-bar');
 const pipelineSummaryEl = document.getElementById('pipeline-summary');
+const pipelineErrorDetailsEl = document.getElementById('pipeline-error-details');
+const pipelineErrorLogEl = document.getElementById('pipeline-error-log');
 const stageListEl = document.getElementById('stage-list');
 const storyListEl = document.getElementById('story-list');
 const storyCountEl = document.getElementById('story-count');
@@ -13,6 +15,7 @@ const storyPillarEl = document.getElementById('story-pillar');
 const storyTitleEl = document.getElementById('story-title');
 const storySubmetaEl = document.getElementById('story-submeta');
 const igPillarSubEl = document.getElementById('ig-pillar-sub');
+const igSlideCounterEl = document.getElementById('ig-slide-counter');
 const igCaptionEl = document.getElementById('ig-caption');
 const liCaptionEl = document.getElementById('li-caption');
 const xPost1El = document.getElementById('x-post-1');
@@ -28,9 +31,19 @@ const statusEl = document.getElementById('ig-carousel-status');
 const prevBtn = document.querySelector('.carousel-btn[data-direction="previous"]');
 const nextBtn = document.querySelector('.carousel-btn[data-direction="next"]');
 
+const lightboxEl = document.getElementById('slide-lightbox');
+const lightboxTitleEl = document.getElementById('lightbox-title');
+const lightboxImgEl = document.getElementById('lightbox-img');
+const lightboxDownloadEl = document.getElementById('lightbox-download');
+const lightboxPrevBtn = document.getElementById('lightbox-prev');
+const lightboxNextBtn = document.getElementById('lightbox-next');
+const lightboxCloseBtn = document.getElementById('lightbox-close');
+
 let stories = [];
 let selectedStoryId = null;
 let pollTimer = null;
+let lightboxSlides = [];
+let lightboxIndex = 0;
 
 // --- Copy button (modern-web-guidance: Invoker Commands + fallback) ---
 const copyTimers = new WeakMap();
@@ -146,6 +159,8 @@ function updateMarkers(activeIdx) {
   buttons.forEach((btn, idx) => {
     btn.setAttribute('aria-current', idx === activeIdx ? 'true' : 'false');
   });
+  const total = trackEl.children.length || 1;
+  igSlideCounterEl.textContent = `${activeIdx + 1} / ${total}`;
 }
 
 function updateNavButtons(activeIdx) {
@@ -203,12 +218,77 @@ nextBtn.addEventListener('click', () => {
   scrollToSlide(base + 1);
 });
 
+trackEl.addEventListener('keydown', (event) => {
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    const base = pendingIndex !== null ? pendingIndex : getSlideIndexFromScroll();
+    scrollToSlide(base - 1);
+  } else if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    const base = pendingIndex !== null ? pendingIndex : getSlideIndexFromScroll();
+    scrollToSlide(base + 1);
+  }
+});
+
+// --- Lightbox (<dialog>) ---
+function renderLightbox() {
+  const slide = lightboxSlides[lightboxIndex];
+  if (!slide) return;
+  lightboxTitleEl.textContent = `Slide ${lightboxIndex + 1} of ${lightboxSlides.length} — ${slide.filename}`;
+  lightboxImgEl.src = slide.url;
+  lightboxImgEl.alt = slide.alt || `Slide ${lightboxIndex + 1}`;
+  lightboxDownloadEl.href = slide.url;
+  lightboxDownloadEl.download = slide.filename;
+  lightboxPrevBtn.disabled = lightboxIndex <= 0;
+  lightboxNextBtn.disabled = lightboxIndex >= lightboxSlides.length - 1;
+}
+
+function openLightbox(slides, index) {
+  lightboxSlides = slides;
+  lightboxIndex = Math.max(0, Math.min(slides.length - 1, index));
+  renderLightbox();
+  if (!lightboxEl.open) lightboxEl.showModal();
+}
+
+lightboxPrevBtn.addEventListener('click', () => {
+  if (lightboxIndex > 0) {
+    lightboxIndex -= 1;
+    renderLightbox();
+  }
+});
+
+lightboxNextBtn.addEventListener('click', () => {
+  if (lightboxIndex < lightboxSlides.length - 1) {
+    lightboxIndex += 1;
+    renderLightbox();
+  }
+});
+
+lightboxCloseBtn.addEventListener('click', () => lightboxEl.close());
+lightboxEl.addEventListener('click', (event) => {
+  if (event.target === lightboxEl) lightboxEl.close();
+});
+lightboxEl.addEventListener('keydown', (event) => {
+  if (event.key === 'ArrowLeft') lightboxPrevBtn.click();
+  else if (event.key === 'ArrowRight') lightboxNextBtn.click();
+});
+
 // --- Data & rendering ---
 function formatTime(iso) {
   if (!iso) return 'Never';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function summarizeError(raw) {
+  if (!raw) return 'Pipeline encountered an error.';
+  const text = String(raw).trim();
+  const cmdIdx = text.indexOf('Command failed:');
+  const beforeCmd = cmdIdx > 0 ? text.slice(0, cmdIdx).trim() : text;
+  const lines = beforeCmd.split('\n').map((l) => l.trim()).filter(Boolean);
+  const meaningful = [...lines].reverse().find((l) => !l.startsWith('at ') && !l.startsWith('_modules/')) || lines[lines.length - 1] || text;
+  return meaningful.length > 160 ? meaningful.slice(0, 157) + '…' : meaningful;
 }
 
 function renderPipeline(data) {
@@ -220,23 +300,37 @@ function renderPipeline(data) {
   runPipelineBtn.disabled = running;
   runPipelineBtn.textContent = running ? 'Running Pipeline…' : 'Generate Story & Carousel';
 
-  pipelineBadgeEl.textContent = running ? 'Running' : hasError ? 'Error' : completedCount === stages.length && stages.length ? 'Done' : 'Ready';
+  const stateKey = running ? 'running' : hasError ? 'error' : completedCount === stages.length && stages.length ? 'done' : 'idle';
+  pipelineBadgeEl.dataset.state = stateKey;
+  pipelineBadgeEl.textContent = running ? 'Running' : hasError ? 'Error' : stateKey === 'done' ? 'Done' : 'Ready';
   pipelineBarEl.max = stages.length || 4;
   pipelineBarEl.value = completedCount;
+  pipelineSummaryEl.dataset.error = hasError ? 'true' : 'false';
 
   if (running) {
     const active = stages.find((s) => s.state === 'running');
     pipelineSummaryEl.textContent = active
       ? `Running ${active.code} (${active.label})…`
       : 'Starting pipeline…';
+    pipelineErrorDetailsEl.hidden = true;
   } else if (hasError) {
-    pipelineSummaryEl.textContent = data.run?.error || 'Pipeline encountered an error.';
+    const rawErr = data.run?.error || 'Pipeline encountered an error.';
+    pipelineSummaryEl.textContent = summarizeError(rawErr);
+    if (rawErr.length > 120 || rawErr.includes('\n')) {
+      pipelineErrorLogEl.textContent = rawErr;
+      pipelineErrorDetailsEl.hidden = false;
+    } else {
+      pipelineErrorDetailsEl.hidden = true;
+    }
   } else if (data.run?.finishedAt) {
     pipelineSummaryEl.textContent = `Last run finished at ${formatTime(data.run.finishedAt)}.`;
+    pipelineErrorDetailsEl.hidden = true;
   } else if (completedCount === stages.length && stages.length) {
     pipelineSummaryEl.textContent = 'Latest pipeline run completed.';
+    pipelineErrorDetailsEl.hidden = true;
   } else {
     pipelineSummaryEl.textContent = 'Ready to run WF2 → WF3c → WF4.';
+    pipelineErrorDetailsEl.hidden = true;
   }
 
   stageListEl.innerHTML = '';
@@ -267,9 +361,10 @@ function renderStoryList() {
     btn.type = 'button';
     btn.className = 'story-btn';
     btn.setAttribute('aria-current', story.storyId === selectedStoryId ? 'true' : 'false');
+    const slideWord = story.slides.length === 1 ? 'slide' : 'slides';
     btn.innerHTML = `
       <strong>${story.title}</strong>
-      <span>${story.slides.length} slides · ${formatTime(story.renderedAt)}</span>
+      <span>${story.slides.length} ${slideWord} · ${formatTime(story.renderedAt)}</span>
     `;
     btn.addEventListener('click', () => {
       selectedStoryId = story.storyId;
@@ -309,6 +404,12 @@ function renderSelectedStory() {
   xThumbStripEl.innerHTML = '';
 
   const total = story.slides.length;
+  const storyLightboxSlides = story.slides.map((s, i) => ({
+    url: s.url,
+    filename: s.filename,
+    alt: `${story.title} — slide ${i + 1}`,
+  }));
+
   story.slides.forEach((slide, idx) => {
     const slideEl = document.createElement('div');
     slideEl.className = 'carousel-slide';
@@ -319,6 +420,7 @@ function renderSelectedStory() {
     const img = document.createElement('img');
     img.src = slide.url;
     img.alt = `${story.title} — slide ${idx + 1}`;
+    img.addEventListener('click', () => openLightbox(storyLightboxSlides, idx));
     slideEl.appendChild(img);
     trackEl.appendChild(slideEl);
 
@@ -331,15 +433,17 @@ function renderSelectedStory() {
 
     const fileLi = document.createElement('li');
     const kb = Math.round(slide.sizeBytes / 1024);
-    fileLi.innerHTML = `<a href="${slide.url}" target="_blank" rel="noopener">${slide.filename}</a> <span>(${kb} KB)</span>`;
+    fileLi.innerHTML = `<a href="${slide.url}" target="_blank" rel="noopener">${slide.filename}</a> <span>${kb} KB</span>`;
     slideFilesListEl.appendChild(fileLi);
 
     const thumb1 = document.createElement('img');
     thumb1.src = slide.url;
     thumb1.alt = `${story.title} slide ${idx + 1}`;
+    thumb1.addEventListener('click', () => openLightbox(storyLightboxSlides, idx));
     liThumbStripEl.appendChild(thumb1);
 
     const thumb2 = thumb1.cloneNode();
+    thumb2.addEventListener('click', () => openLightbox(storyLightboxSlides, idx));
     xThumbStripEl.appendChild(thumb2);
   });
 
@@ -367,10 +471,26 @@ function renderSelectedStory() {
 async function triggerPipeline() {
   runPipelineBtn.disabled = true;
   runPipelineBtn.textContent = 'Starting…';
-  const res = await fetch('/api/pipeline/trigger', { method: 'POST' });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    alert(err.error || 'Failed to trigger pipeline');
+  try {
+    const res = await fetch('/api/pipeline/trigger', { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      pipelineBadgeEl.dataset.state = 'error';
+      pipelineBadgeEl.textContent = 'Error';
+      pipelineSummaryEl.dataset.error = 'true';
+      pipelineSummaryEl.textContent = err.error || 'Failed to trigger pipeline.';
+      runPipelineBtn.disabled = false;
+      runPipelineBtn.textContent = 'Generate Story & Carousel';
+      return;
+    }
+  } catch (err) {
+    pipelineBadgeEl.dataset.state = 'error';
+    pipelineBadgeEl.textContent = 'Error';
+    pipelineSummaryEl.dataset.error = 'true';
+    pipelineSummaryEl.textContent = err.message || 'Network error triggering pipeline.';
+    runPipelineBtn.disabled = false;
+    runPipelineBtn.textContent = 'Generate Story & Carousel';
+    return;
   }
   await loadAll();
 }

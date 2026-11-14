@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WE, HUMANITY — Content Studio</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23171715'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' fill='%23f6f4ef' font-family='Georgia,serif' font-weight='700' font-size='26'%3EWH%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -31,6 +32,10 @@
         <div class="pipeline-progress" id="pipeline-progress">
           <progress id="pipeline-bar" max="4" value="0" aria-label="Pipeline progress"></progress>
           <p class="pipeline-summary" id="pipeline-summary">Ready to run WF2 → WF3c → WF4.</p>
+          <details class="pipeline-error-details" id="pipeline-error-details" hidden>
+            <summary>Show error details</summary>
+            <pre class="pipeline-error-log" id="pipeline-error-log"></pre>
+          </details>
           <ol class="stage-list" id="stage-list"></ol>
         </div>
       </section>
@@ -76,6 +81,7 @@
                       <strong>we_humanity</strong>
                       <span id="ig-pillar-sub">Design &amp; Engineering</span>
                     </div>
+                    <span class="slide-counter-pill" id="ig-slide-counter" aria-hidden="true">1 / 1</span>
                   </div>
 
                   <section class="carousel" aria-roledescription="carousel" aria-label="Instagram carousel slides">
@@ -165,6 +171,21 @@
       </div>
     </main>
   </div>
+
+  <dialog class="lightbox-dialog" id="slide-lightbox" aria-label="Slide preview">
+    <div class="lightbox-bar">
+      <span class="lightbox-title" id="lightbox-title">Slide 1</span>
+      <div class="lightbox-actions">
+        <a class="btn btn-secondary" id="lightbox-download" href="#" download>Download PNG</a>
+        <button type="button" class="btn btn-secondary" id="lightbox-close" aria-label="Close preview">Close</button>
+      </div>
+    </div>
+    <div class="lightbox-stage">
+      <button type="button" class="carousel-btn lightbox-nav" id="lightbox-prev" aria-label="Previous slide">&#8249;</button>
+      <img id="lightbox-img" src="" alt="">
+      <button type="button" class="carousel-btn lightbox-nav" id="lightbox-next" aria-label="Next slide">&#8250;</button>
+    </div>
+  </dialog>
 
   <script type="module" src="/app.js"></script>
 </body>
