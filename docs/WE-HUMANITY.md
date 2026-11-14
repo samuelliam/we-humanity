@@ -99,7 +99,7 @@ Every carousel slide is paired with a verified visual asset stored in Airtable (
 3. **Tier 3 — Documentary AI Synthesis (`models/gemini-2.5-flash-image`):**
    - Used only when neither Wikimedia Commons nor Openverse has a valid archival photograph.
    - Prompts for a **bright, well-lit archival museum documentary photograph** (or tactile mid-tone hardware/studio macro scene) with even studio/daylight fill and lifted shadow detail so dark gradients never obscure the subject.
-   - Explicitly recorded in Airtable with `AI Generated = true` and credited on the slide as `Visual synthesis via Gemini Flash Image (WE, HUMANITY)`.
+   - Explicitly recorded in Airtable with `AI Generated = true` for internal provenance and omitted from the rendered slide footer.
 
 ---
 
