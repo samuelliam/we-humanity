@@ -135,6 +135,14 @@ async function uploadBufferToFirebaseStorage({ accessToken, bucket, objectPath, 
   return `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(objectPath)}?alt=media&token=${downloadToken}`;
 }
 
+async function deleteFromFirebaseStorage({ accessToken, bucket, objectPath }) {
+  const url = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(objectPath)}`;
+  await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
 function getSlideFiles(storyId) {
   if (!fs.existsSync(RENDERS_DIR)) return [];
   const prefix = `${storyId}_slide_`;
@@ -234,6 +242,7 @@ async function publishStoryToInstagram(rawStoryId, options = {}) {
     const googleToken = await getGoogleAccessToken(serviceAccount);
 
     const slideUrls = [];
+    const uploadedPaths = [];
     for (const slide of slides) {
       const filePath = path.join(RENDERS_DIR, slide.filename);
       const buffer = fs.readFileSync(filePath);
@@ -247,6 +256,7 @@ async function publishStoryToInstagram(rawStoryId, options = {}) {
         buffer,
       });
       slideUrls.push(publicUrl);
+      uploadedPaths.push(objectPath);
     }
 
     // Step 1: Create child containers for each slide
@@ -279,6 +289,13 @@ async function publishStoryToInstagram(rawStoryId, options = {}) {
       creation_id: parent.id,
       access_token: igAccessToken,
     });
+
+    // Clean up temporary Firebase Storage objects now that Meta has ingested the carousel
+    await Promise.allSettled(
+      uploadedPaths.map((objectPath) =>
+        deleteFromFirebaseStorage({ accessToken: googleToken, bucket, objectPath })
+      )
+    );
 
     let permalink = null;
     try {

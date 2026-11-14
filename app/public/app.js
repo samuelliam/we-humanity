@@ -572,6 +572,7 @@ const stopPipelineBtn = document.getElementById('stop-pipeline-btn');
 const approveStoryBtn = document.getElementById('approve-story-btn');
 const publishIgBtn = document.getElementById('publish-ig-btn');
 const exportZipBtn = document.getElementById('export-zip-btn');
+const deleteStoryBtn = document.getElementById('delete-story-btn');
 
 async function triggerPipeline() {
   runPipelineBtn.disabled = true;
@@ -686,6 +687,38 @@ if (publishIgBtn) {
       pipelineSummaryEl.textContent = err.message || 'Network error publishing to Instagram.';
       publishIgBtn.disabled = false;
       publishIgBtn.textContent = 'Publish to IG';
+    }
+  });
+}
+
+if (deleteStoryBtn) {
+  deleteStoryBtn.addEventListener('click', async () => {
+    if (!selectedStoryId) return;
+    const story = stories.find((s) => s.storyId === selectedStoryId);
+    const label = story ? `"${story.title}"` : selectedStoryId;
+    if (!window.confirm(`Delete rendered carousel for ${label}?`)) return;
+    deleteStoryBtn.disabled = true;
+    deleteStoryBtn.textContent = 'Deleting…';
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(selectedStoryId)}`, { method: 'DELETE' });
+      if (res.ok) {
+        selectedStoryId = null;
+        await loadAll();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        pipelineBadgeEl.dataset.state = 'error';
+        pipelineBadgeEl.textContent = 'Error';
+        pipelineSummaryEl.dataset.error = 'true';
+        pipelineSummaryEl.textContent = err.error || 'Failed to delete story.';
+      }
+    } catch (err) {
+      pipelineBadgeEl.dataset.state = 'error';
+      pipelineBadgeEl.textContent = 'Error';
+      pipelineSummaryEl.dataset.error = 'true';
+      pipelineSummaryEl.textContent = err.message || 'Network error deleting story.';
+    } finally {
+      deleteStoryBtn.disabled = false;
+      deleteStoryBtn.textContent = 'Delete';
     }
   });
 }

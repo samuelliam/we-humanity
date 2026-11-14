@@ -105,6 +105,8 @@ function querySqliteJson(sql) {
   }
 }
 
+const missedStoryIds = new Set();
+
 function loadStoryMetadataFromN8n(neededStoryIds) {
   const byStory = new Map();
   if (!neededStoryIds.length) return byStory;
@@ -121,23 +123,25 @@ function loadStoryMetadataFromN8n(neededStoryIds) {
         // Re-extract if corrupted
       }
     }
-    missing.push(storyId);
+    if (!missedStoryIds.has(storyId)) {
+      missing.push(storyId);
+    }
   }
 
   if (!missing.length) return byStory;
 
-  // 2. Only query n8n SQLite for stories missing a .meta.json cache
+  // 2. Only query the most recent n8n execution once per missing storyId so it never stalls the server
   const execIds = querySqliteJson(`
     SELECT e.id AS executionId, e.startedAt, e.stoppedAt
     FROM execution_entity e
-    WHERE e.workflowId = 'eSrdqP9mk6hg6Xls' AND e.status = 'success'
+    WHERE e.workflowId = 'eSrdqP9mk6hg6Xls' AND e.status IN ('success', 'error')
     ORDER BY e.id DESC
-    LIMIT 10;
+    LIMIT 1;
   `);
 
   for (const row of execIds) {
     if (missing.every((id) => byStory.has(id))) break;
-    const dataRows = querySqliteJson(`SELECT data FROM execution_data WHERE executionId = ${Number(row.executionId)};`);
+    const dataRows = querySqliteJson(`SELECT data FROM execution_data WHERE executionId = ${Number(row.executionId)} AND length(data) < 20000000;`);
     if (!dataRows[0]?.data) continue;
     try {
       const root = decodeFlatted(dataRows[0].data);
@@ -167,6 +171,9 @@ function loadStoryMetadataFromN8n(neededStoryIds) {
     } catch {
       // Skip malformed execution rows
     }
+  }
+  for (const id of missing) {
+    if (!byStory.has(id)) missedStoryIds.add(id);
   }
   return byStory;
 }
@@ -299,8 +306,11 @@ function getPipelineStatus() {
   const wf3cExec = byWf.get('Bnv0SFCD8oerXXhs') || null;
   const wf4Exec = byWf.get('eSrdqP9mk6hg6Xls') || null;
 
-  if (currentPipelineRun && wf2Exec && wf2Exec.stoppedAt) {
-    currentPipelineRun.status = wf2Exec.status === 'success' ? 'success' : 'error';
+  const isRerenderRun = refRun?.workflowId === 'eSrdqP9mk6hg6Xls';
+  const entryExec = isRerenderRun ? wf4Exec : wf2Exec;
+
+  if (currentPipelineRun && entryExec && entryExec.stoppedAt) {
+    currentPipelineRun.status = entryExec.status === 'success' ? 'success' : 'error';
     currentPipelineRun.finishedAt = new Date().toISOString();
     currentPipelineRun = null;
     if (currentChild) {
@@ -319,7 +329,9 @@ function getPipelineStatus() {
     let activeStoppedAt = null;
     let detail = null;
 
-    if (stage.id === 'WHWF1ResearchStory1') {
+    if (isRerenderRun && stage.id !== 'eSrdqP9mk6hg6Xls') {
+      state = 'skipped';
+    } else if (stage.id === 'WHWF1ResearchStory1') {
       if (wf1Exec) {
         state = wf1Exec.status === 'running' ? 'running' : wf1Exec.status === 'success' ? 'success' : 'error';
         activeStartedAt = wf1Exec.startedAt;
@@ -679,6 +691,25 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, approved: true, approvedAt: meta.approvedAt, airtableSynced });
   }
 
+  const deleteStoryMatch = req.method === 'DELETE' && pathname.match(/^\/api\/stories\/([^/]+)$/);
+  if (deleteStoryMatch) {
+    const cleanId = String(deleteStoryMatch[1] || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!cleanId) return sendJson(res, 400, { error: 'Invalid story ID' });
+    let deletedCount = 0;
+    if (fs.existsSync(RENDERS_DIR)) {
+      for (const file of fs.readdirSync(RENDERS_DIR)) {
+        if (file === `${cleanId}.meta.json` || file.startsWith(`${cleanId}_slide_`)) {
+          try {
+            fs.unlinkSync(path.join(RENDERS_DIR, file));
+            deletedCount += 1;
+          } catch {}
+        }
+      }
+    }
+    if (deletedCount === 0) return sendJson(res, 404, { error: 'Story not found' });
+    return sendJson(res, 200, { ok: true, storyId: cleanId, deletedFiles: deletedCount });
+  }
+
   const rerenderMatch = req.method === 'POST' && pathname.match(/^\/api\/stories\/([^/]+)\/rerender$/);
   if (rerenderMatch) {
     const result = rerenderStory(rerenderMatch[1]);
@@ -689,10 +720,25 @@ const server = http.createServer(async (req, res) => {
   const publishIgMatch = req.method === 'POST' && pathname.match(/^\/api\/stories\/([^/]+)\/publish-instagram$/);
   if (publishIgMatch) {
     const cleanId = String(publishIgMatch[1] || '').replace(/[^a-zA-Z0-9_-]/g, '');
-    const story = getStories().find((s) => s.storyId === cleanId);
-    if (!story) return sendJson(res, 404, { error: 'Story not found' });
+    const hasSlides = fs.existsSync(RENDERS_DIR) && fs.readdirSync(RENDERS_DIR).some((f) => f.startsWith(`${cleanId}_slide_`));
+    if (!hasSlides) return sendJson(res, 404, { error: 'Story slides not found' });
     try {
       const body = await readJsonBody(req);
+      if (body && (body.instagramCaption || body.title)) {
+        const metaPath = path.join(RENDERS_DIR, `${cleanId}.meta.json`);
+        let meta = {};
+        if (fs.existsSync(metaPath)) {
+          try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch {}
+        }
+        if (body.title && !meta.title) meta.title = body.title;
+        if (body.pillar && !meta.pillar) meta.pillar = body.pillar;
+        if (body.instagramCaption && !meta.instagramCaption) meta.instagramCaption = body.instagramCaption;
+        if (body.linkedinCaption && !meta.linkedinCaption) meta.linkedinCaption = body.linkedinCaption;
+        if (body.xThread && !meta.xThread) meta.xThread = body.xThread;
+        if (Array.isArray(body.credits) && !meta.credits) meta.credits = body.credits;
+        if (!meta.renderedAt) meta.renderedAt = new Date().toISOString();
+        fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8');
+      }
       const result = await publishStoryToInstagram(cleanId, { force: Boolean(body.force) });
       return sendJson(res, 200, result);
     } catch (err) {
