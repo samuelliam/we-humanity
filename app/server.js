@@ -178,6 +178,47 @@ function loadStoryMetadataFromN8n(neededStoryIds) {
   return byStory;
 }
 
+const MUSIC_PRESETS = [
+  {
+    match: /\b(apollo|space|orbit|nasa|computer|macintosh|xerox|alto|silicon|digital|interface|pixel|code|software|cyber|terminal)\b/i,
+    tracks: [
+      { track: 'Cornfield Chase — Hans Zimmer', vibe: 'Awe & cosmic engineering' },
+      { track: 'Says — Nils Frahm', vibe: 'Building momentum & precision' },
+      { track: 'An Ending (Ascent) — Brian Eno', vibe: 'Reflective tech & discovery' },
+    ],
+  },
+  {
+    match: /\b(ship|viking|oseberg|sea|ocean|maritime|chronometer|harrison|compass|navigation|star|chart|celestial|astronomy)\b/i,
+    tracks: [
+      { track: 'First Step — Hans Zimmer', vibe: 'Voyage & precision craft' },
+      { track: 'Saman — Ólafur Arnalds', vibe: 'Quiet reverence & navigation' },
+      { track: 'Time — Hans Zimmer', vibe: 'Timeless scale & endurance' },
+    ],
+  },
+  {
+    match: /\b(qanat|well|vav|water|persia|roman|ancient|antikythera|bronze|lycurgus|glass|stone|temple|architecture)\b/i,
+    tracks: [
+      { track: 'Experience — Ludovico Einaudi', vibe: 'Monumental human ingenuity' },
+      { track: 'On the Nature of Daylight — Max Richter', vibe: 'Museum & archival depth' },
+      { track: 'Nuvole Bianche — Ludovico Einaudi', vibe: 'Warm historical storytelling' },
+    ],
+  },
+];
+
+const DEFAULT_MUSIC_TRACKS = [
+  { track: 'Experience — Ludovico Einaudi', vibe: 'Editorial storytelling' },
+  { track: 'Saman — Ólafur Arnalds', vibe: 'Minimalist & thoughtful' },
+  { track: 'Says — Nils Frahm', vibe: 'Craft & precision' },
+];
+
+function suggestMusicForStory({ title, pillar, instagramCaption }) {
+  const haystack = `${title || ''} ${pillar || ''} ${instagramCaption || ''}`;
+  for (const preset of MUSIC_PRESETS) {
+    if (preset.match.test(haystack)) return preset.tracks;
+  }
+  return DEFAULT_MUSIC_TRACKS;
+}
+
 function getStories() {
   if (!fs.existsSync(RENDERS_DIR)) return [];
   const files = fs.readdirSync(RENDERS_DIR);
@@ -219,7 +260,10 @@ function getStories() {
       instagramCaption: meta.instagramCaption || '',
       linkedinCaption: meta.linkedinCaption || '',
       xThread: meta.xThread || null,
-      credits: meta.credits || [],
+      credits: Array.isArray(meta.credits) ? meta.credits : [],
+      recommendedMusic: Array.isArray(meta.recommendedMusic) && meta.recommendedMusic.length
+        ? meta.recommendedMusic
+        : suggestMusicForStory(meta),
       approved: Boolean(meta.approved),
       approvedAt: meta.approvedAt || null,
       instagramPublished: Boolean(meta.instagramPublished),
@@ -703,6 +747,13 @@ const server = http.createServer(async (req, res) => {
             fs.unlinkSync(path.join(RENDERS_DIR, file));
             deletedCount += 1;
           } catch {}
+        }
+      }
+    }
+    if (fs.existsSync(ASSETS_DIR)) {
+      for (const file of fs.readdirSync(ASSETS_DIR)) {
+        if (file.startsWith(`${cleanId}_slide_`)) {
+          try { fs.unlinkSync(path.join(ASSETS_DIR, file)); } catch {}
         }
       }
     }

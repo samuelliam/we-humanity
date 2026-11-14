@@ -22,6 +22,7 @@ const liCaptionEl = document.getElementById('li-caption');
 const xPost1El = document.getElementById('x-post-1');
 const xPost2El = document.getElementById('x-post-2');
 const slideFilesListEl = document.getElementById('slide-files-list');
+const musicListEl = document.getElementById('music-list');
 const creditsListEl = document.getElementById('credits-list');
 const liThumbStripEl = document.getElementById('li-thumb-strip');
 const xThumbStripEl = document.getElementById('x-thumb-strip');
@@ -496,6 +497,7 @@ function renderSelectedStory() {
   trackEl.innerHTML = '';
   markersEl.innerHTML = '';
   slideFilesListEl.innerHTML = '';
+  if (musicListEl) musicListEl.innerHTML = '';
   liThumbStripEl.innerHTML = '';
   xThumbStripEl.innerHTML = '';
 
@@ -543,6 +545,42 @@ function renderSelectedStory() {
     thumb2.addEventListener('click', () => openLightbox(storyLightboxSlides, idx));
     xThumbStripEl.appendChild(thumb2);
   });
+
+  if (musicListEl) {
+    const tracks = Array.isArray(story.recommendedMusic) ? story.recommendedMusic : [];
+    for (const item of tracks) {
+      const trackName = typeof item === 'string' ? item : (item.track || '');
+      const vibe = typeof item === 'object' && item.vibe ? item.vibe : 'Instrumental / ambient';
+      if (!trackName) continue;
+      const li = document.createElement('li');
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'music-meta';
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'music-track';
+      titleSpan.textContent = trackName;
+      const vibeSpan = document.createElement('span');
+      vibeSpan.className = 'music-vibe';
+      vibeSpan.textContent = vibe;
+      metaDiv.appendChild(titleSpan);
+      metaDiv.appendChild(vibeSpan);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'btn btn-secondary music-copy-btn';
+      copyBtn.textContent = 'Copy';
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(trackName);
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1400);
+        } catch {}
+      });
+
+      li.appendChild(metaDiv);
+      li.appendChild(copyBtn);
+      musicListEl.appendChild(li);
+    }
+  }
 
   creditsListEl.innerHTML = '';
   if (story.credits.length) {

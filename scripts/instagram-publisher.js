@@ -7,6 +7,7 @@ const path = require('path');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const RENDERS_DIR = path.join(ROOT_DIR, 'renders');
+const ASSETS_DIR = path.join(ROOT_DIR, 'assets');
 const DEFAULT_IG_USER_ID = '17841414022297284';
 const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0';
 
@@ -296,6 +297,15 @@ async function publishStoryToInstagram(rawStoryId, options = {}) {
         deleteFromFirebaseStorage({ accessToken: googleToken, bucket, objectPath })
       )
     );
+
+    // Clean up temporary per-story raw assets in assets/ (preserves logo/shared files)
+    if (fs.existsSync(ASSETS_DIR)) {
+      for (const file of fs.readdirSync(ASSETS_DIR)) {
+        if (file.startsWith(`${storyId}_slide_`)) {
+          try { fs.unlinkSync(path.join(ASSETS_DIR, file)); } catch {}
+        }
+      }
+    }
 
     let permalink = null;
     try {

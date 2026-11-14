@@ -864,7 +864,7 @@ body {
   color: var(--ink-muted);
 }
 
-.slide-files-list, .credits-list {
+.slide-files-list, .credits-list, .music-list {
   list-style: none;
   margin: 0 0 1.25rem;
   padding: 0;
@@ -872,6 +872,41 @@ body {
   flex-direction: column;
   gap: 0.45rem;
   font-size: 0.82rem;
+}
+
+.music-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+}
+
+.music-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.music-track {
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.music-vibe {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+
+.music-copy-btn {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  padding: 0.22rem 0.5rem;
 }
 
 .slide-files-list li {
