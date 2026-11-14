@@ -357,8 +357,12 @@ function renderPipeline(data) {
     : 'Generate Story & Carousel';
 
   const stateKey = running ? 'running' : hasError ? 'error' : completedCount === stages.length && stages.length ? 'done' : 'idle';
+  if (stopPipelineBtn) {
+    stopPipelineBtn.hidden = !running;
+  }
+
   pipelineBadgeEl.dataset.state = stateKey;
-  pipelineBadgeEl.textContent = running ? (active ? active.code : 'Running') : hasError ? 'Error' : stateKey === 'done' ? 'Done' : 'Ready';
+  pipelineBadgeEl.textContent = running ? (active ? active.code : 'Running') : data.run?.status === 'stopped' ? 'Stopped' : hasError ? 'Error' : stateKey === 'done' ? 'Done' : 'Ready';
   pipelineBarEl.max = stages.length || 4;
   pipelineBarEl.value = completedCount + (active ? 0.45 : 0);
   pipelineSummaryEl.dataset.error = hasError ? 'true' : 'false';
@@ -550,6 +554,7 @@ function renderSelectedStory() {
 const subthemeSelectEl = document.getElementById('subtheme-select');
 const customSubjectInputEl = document.getElementById('custom-subject-input');
 const rerenderBtn = document.getElementById('rerender-btn');
+const stopPipelineBtn = document.getElementById('stop-pipeline-btn');
 
 async function triggerPipeline() {
   runPipelineBtn.disabled = true;
@@ -613,6 +618,23 @@ async function rerenderCurrentStory() {
 
 if (rerenderBtn) {
   rerenderBtn.addEventListener('click', rerenderCurrentStory);
+}
+
+async function stopPipeline() {
+  if (!stopPipelineBtn) return;
+  stopPipelineBtn.disabled = true;
+  stopPipelineBtn.textContent = 'Stopping…';
+  try {
+    await fetch('/api/pipeline/stop', { method: 'POST' });
+  } catch {} finally {
+    stopPipelineBtn.disabled = false;
+    stopPipelineBtn.textContent = 'Stop Run';
+  }
+  await loadAll();
+}
+
+if (stopPipelineBtn) {
+  stopPipelineBtn.addEventListener('click', stopPipeline);
 }
 
 async function loadAll() {

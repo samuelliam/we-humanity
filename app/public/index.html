@@ -44,7 +44,10 @@
             <input type="text" id="custom-subject-input" placeholder="e.g. Susan Kare Macintosh Icons">
           </label>
         </div>
-        <button type="button" id="run-pipeline-btn" class="btn btn-primary btn-block">Generate Story &amp; Carousel</button>
+        <div class="pipeline-actions">
+          <button type="button" id="run-pipeline-btn" class="btn btn-primary btn-block">Generate Story &amp; Carousel</button>
+          <button type="button" id="stop-pipeline-btn" class="btn btn-danger" hidden>Stop Run</button>
+        </div>
         <div class="pipeline-progress" id="pipeline-progress">
           <progress id="pipeline-bar" max="4" value="0" aria-label="Pipeline progress"></progress>
           <p class="pipeline-summary" id="pipeline-summary">Ready to run WF2 → WF3c → WF4.</p>

@@ -445,6 +445,7 @@ function triggerPipeline(options = {}) {
   const finishRun = (err, stdout, stderr) => {
     currentChild = null;
     try { fs.unlinkSync(optionsFile); } catch {}
+    if (run.stopped) return;
     if (currentPipelineRun === run) {
       currentPipelineRun = null;
       run.finishedAt = new Date().toISOString();
@@ -460,6 +461,7 @@ function triggerPipeline(options = {}) {
   if (hasCustomOptions) {
     currentChild = runN8nWorkflow('WHWF1ResearchStory1', (err, stdout, stderr) => {
       try { fs.unlinkSync(optionsFile); } catch {}
+      if (run.stopped) return;
       if (err) return finishRun(err, stdout, stderr);
       currentChild = runN8nWorkflow(PIPELINE_ENTRY_ID, finishRun);
     });
@@ -495,6 +497,7 @@ function rerenderStory(storyId) {
   currentChild = runN8nWorkflow('eSrdqP9mk6hg6Xls', (err, stdout, stderr) => {
     currentChild = null;
     try { fs.unlinkSync(rerenderFile); } catch {}
+    if (run.stopped) return;
     if (currentPipelineRun === run) {
       currentPipelineRun = null;
       run.finishedAt = new Date().toISOString();
@@ -508,6 +511,31 @@ function rerenderStory(storyId) {
   });
 
   return { run, status: 202 };
+}
+
+function stopPipeline() {
+  if (!currentPipelineRun) {
+    return { error: 'No pipeline run is currently active', status: 409 };
+  }
+
+  const run = currentPipelineRun;
+  run.stopped = true;
+  run.status = 'stopped';
+  run.finishedAt = new Date().toISOString();
+  run.error = 'Stopped by user.';
+  currentPipelineRun = null;
+
+  try { fs.unlinkSync(path.join(ROOT_DIR, '.studio-run-options.json')); } catch {}
+  try { fs.unlinkSync(path.join(ROOT_DIR, '.studio-rerender.json')); } catch {}
+
+  if (currentChild) {
+    const child = currentChild;
+    currentChild = null;
+    try { child.kill('SIGTERM'); } catch {}
+    setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 1500);
+  }
+
+  return { run, status: 200 };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -525,6 +553,12 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && pathname === '/api/pipeline/trigger') {
     const body = await readJsonBody(req);
     const result = triggerPipeline(body);
+    if (result.error) return sendJson(res, result.status, { error: result.error });
+    return sendJson(res, result.status, { run: result.run });
+  }
+
+  if (req.method === 'POST' && pathname === '/api/pipeline/stop') {
+    const result = stopPipeline();
     if (result.error) return sendJson(res, result.status, { error: result.error });
     return sendJson(res, result.status, { run: result.run });
   }
