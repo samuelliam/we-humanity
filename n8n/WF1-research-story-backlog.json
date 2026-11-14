@@ -72,16 +72,33 @@
       }
     },
     {
+      "id": "519c2a10-4b02-4d30-9f1a-81c92a770001",
+      "name": "Read Studio Options",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        496,
+        240
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "/Users/admin/Documents/My Workspace/we-humanity-wf3c/.studio-run-options.json",
+        "options": {}
+      }
+    },
+    {
       "id": "67aefe55-9928-4af3-868c-b9a9738a29f3",
       "name": "Build Discovery Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        608,
+        656,
         240
       ],
       "parameters": {
-        "jsCode": "const existing = $input.all().map(x => x.json.Title).filter(Boolean);\nconst avoid = existing.length ? 'Do NOT repeat or closely overlap any of these existing stories: ' + existing.join('; ') + '.' : 'No existing stories yet.';\nconst prompt = [\n  'You are the editorial researcher for WE, HUMANITY, a series about human creativity, discovery, craftsmanship, and design across both physical artifacts and digital/information systems.',\n  'Propose THREE distinct, specific, real, historically documented subjects from different eras and regions, rotating across these 4 sub-themes: (1) Physical Craft & Vessels (tools, watercraft, everyday/industrial design classics), (2) Architecture & Infrastructure (water systems, bridges, passive cooling, survival structures), (3) Scientific Instruments & Mapping (chronometers, star charts, navigation tools), and (4) Digital Interfaces & Information Design (iconic graphical interfaces, typography, wayfinding maps, or early computing hardware/UI breakthroughs). Choose subjects that are well-documented in museum or computing archives and likely to have freely licensed photographs or specimens on Wikimedia Commons or Openverse.',\n  avoid,\n  'Set pillar to \"Form and function\" for every item.',\n  'Return ONLY JSON: {\"candidates\":[{\"title\":\"...\",\"pillar\":\"Form and function\",\"brief\":\"2-3 factual sentences summarizing the hard constraint it solved, who made it, when, and the exact mechanism or interface decision that made it work\",\"priority\":1}]}'\n].join('\\n\\n');\nreturn [{ json: { prompt } }];"
+        "jsCode": "const existing = $('Fetch Existing Stories').all().map(x => x.json.Title).filter(Boolean);\nlet runOpts = {};\ntry {\n  const first = $input.first();\n  if (first && first.binary && first.binary.data) {\n    const buf = await this.helpers.getBinaryDataBuffer(0, 'data');\n    runOpts = JSON.parse(buf.toString('utf8')) || {};\n  }\n} catch {}\nconst customSubject = String(runOpts.subject || '').trim();\nconst subTheme = String(runOpts.subTheme || '').trim();\nconst recent = existing.slice(-5);\nconst avoid = existing.length ? 'Do NOT repeat or closely overlap any of these existing stories: ' + existing.join('; ') + '.' : 'No existing stories yet.';\nconst rotationHint = customSubject\n  ? `USER-REQUESTED SUBJECT: Candidate #1 MUST be \"${customSubject}\" (researched accurately from historical/museum/archive sources). Propose 2 other distinct backup subjects.`\n  : subTheme\n    ? `USER-REQUESTED SUB-THEME: Candidate #1 MUST belong to the sub-theme \"${subTheme}\". Propose 2 other distinct subjects from other sub-themes.`\n    : (recent.length ? `SUB-THEME ROTATION: Recent stories were [${recent.join('; ')}]. For Candidate #1 (priority 1), deliberately pick a DIFFERENT sub-theme and era from those recent stories (e.g., if recent stories were physical craft/ships/furniture, pick Digital Interfaces & Information Design, Architecture & Infrastructure, or Scientific Instruments & Mapping).` : 'Rotate across all 4 sub-themes.');\nconst prompt = [\n  'You are the editorial researcher for WE, HUMANITY, a series about human creativity, discovery, craftsmanship, and design across both physical artifacts and digital/information systems.',\n  'Propose THREE distinct, specific, real, historically documented subjects from different eras and regions, rotating across these 4 sub-themes: (1) Physical Craft & Vessels (tools, watercraft, everyday/industrial design classics), (2) Architecture & Infrastructure (water systems, bridges, passive cooling, survival structures), (3) Scientific Instruments & Mapping (chronometers, star charts, navigation tools), and (4) Digital Interfaces & Information Design (iconic graphical interfaces, typography, wayfinding maps, or early computing hardware/UI breakthroughs). Choose subjects that are well-documented in museum or computing archives and likely to have freely licensed photographs or specimens on Wikimedia Commons or Openverse.',\n  rotationHint,\n  avoid,\n  'Set pillar to \"Form and function\" for every item.',\n  'Return ONLY JSON: {\"candidates\":[{\"title\":\"...\",\"pillar\":\"Form and function\",\"brief\":\"2-3 factual sentences summarizing the hard constraint it solved, who made it, when, and the exact mechanism or interface decision that made it work\",\"priority\":1}]}'\n].join('\\n\\n');\nreturn [{ json: { prompt, hasOverride: Boolean(customSubject || subTheme) } }];"
       }
     },
     {
@@ -133,7 +150,7 @@
         240
       ],
       "parameters": {
-        "jsCode": "const existingTitles = $('Fetch Existing Stories').all().map(x => String(x.json.Title || '').toLowerCase()).filter(Boolean);\nconst words = s => new Set(String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3));\nconst isDuplicate = (title) => {\n  const t = String(title || '').toLowerCase().trim();\n  if (!t) return true;\n  if (existingTitles.some(e => e === t || e.includes(t) || t.includes(e))) return true;\n  const tw = words(t);\n  for (const e of existingTitles) {\n    const ew = words(e);\n    const overlap = [...tw].filter(w => ew.has(w)).length;\n    if (tw.size > 0 && overlap / Math.min(tw.size, ew.size || 1) >= 0.6) return true;\n  }\n  return false;\n};\nconst item = $json;\nlet d;\nif (item.candidates || item.title) {\n  d = item;\n} else {\n  const parts = item?.content?.parts ?? item?.candidates?.[0]?.content?.parts ?? [];\n  let raw = parts.map(p => p.text || '').join('') || item.text || item.output || '';\n  raw = raw.replace(/```json|```/g, '').trim();\n  d = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));\n}\nconst list = Array.isArray(d.candidates) ? d.candidates : [d];\nconst picked = list.find(c => c && c.title && c.brief && !isDuplicate(c.title));\nif (!picked) throw new Error('WF1 could not find a non-duplicate story subject');\nreturn [{ json: { Title: picked.title, Pillar: ['Form and function'].includes(picked.pillar) ? picked.pillar : 'Form and function', Brief: picked.brief, Status: 'queued', Priority: Number(picked.priority) || 1 } }];"
+        "jsCode": "const existingTitles = $('Fetch Existing Stories').all().map(x => String(x.json.Title || '').toLowerCase()).filter(Boolean);\nconst hasOverride = Boolean($('Build Discovery Prompt').first().json.hasOverride);\nconst words = s => new Set(String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3));\nconst isDuplicate = (title) => {\n  const t = String(title || '').toLowerCase().trim();\n  if (!t) return true;\n  if (existingTitles.some(e => e === t || e.includes(t) || t.includes(e))) return true;\n  const tw = words(t);\n  for (const e of existingTitles) {\n    const ew = words(e);\n    const overlap = [...tw].filter(w => ew.has(w)).length;\n    if (tw.size > 0 && overlap / Math.min(tw.size, ew.size || 1) >= 0.6) return true;\n  }\n  return false;\n};\nconst item = $json;\nlet d;\nif (item.candidates || item.title) {\n  d = item;\n} else {\n  const parts = item?.content?.parts ?? item?.candidates?.[0]?.content?.parts ?? [];\n  let raw = parts.map(p => p.text || '').join('') || item.text || item.output || '';\n  raw = raw.replace(/```json|```/g, '').trim();\n  d = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));\n}\nconst list = Array.isArray(d.candidates) ? d.candidates : [d];\nconst picked = list.find(c => c && c.title && c.brief && !isDuplicate(c.title));\nif (!picked) throw new Error('WF1 could not find a non-duplicate story subject');\nreturn [{ json: { Title: picked.title, Pillar: ['Form and function'].includes(picked.pillar) ? picked.pillar : 'Form and function', Brief: picked.brief, Status: 'queued', Priority: hasOverride ? 0 : (Number(picked.priority) || 1) } }];"
       }
     },
     {
@@ -219,6 +236,17 @@
       ]
     },
     "Fetch Existing Stories": {
+      "main": [
+        [
+          {
+            "node": "Read Studio Options",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Studio Options": {
       "main": [
         [
           {

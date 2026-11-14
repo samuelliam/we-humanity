@@ -385,9 +385,49 @@ function getPipelineStatus() {
   };
 }
 
-function triggerPipeline() {
+function readJsonBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      try {
+        const raw = Buffer.concat(chunks).toString('utf8').trim();
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        resolve({});
+      }
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
+function runN8nWorkflow(workflowId, onDone) {
+  return execFile(N8N_BIN, ['execute', `--id=${workflowId}`, '--rawOutput'], {
+    cwd: ROOT_DIR,
+    env: {
+      ...process.env,
+      N8N_RUNNERS_BROKER_PORT: process.env.N8N_EXECUTE_BROKER_PORT || '5680',
+      N8N_RESTRICT_FILE_ACCESS_TO: process.env.N8N_RESTRICT_FILE_ACCESS_TO || ROOT_DIR,
+    },
+    timeout: 8 * 60 * 1000,
+    maxBuffer: 20 * 1024 * 1024,
+  }, onDone);
+}
+
+function triggerPipeline(options = {}) {
   if (currentPipelineRun) {
     return { error: 'Pipeline is already running', status: 409 };
+  }
+
+  const subject = String(options.subject || '').trim();
+  const subTheme = String(options.subTheme || '').trim();
+  const hasCustomOptions = Boolean(subject || subTheme);
+  const optionsFile = path.join(ROOT_DIR, '.studio-run-options.json');
+
+  if (hasCustomOptions) {
+    fs.writeFileSync(optionsFile, JSON.stringify({ subject, subTheme }), 'utf8');
+  } else {
+    try { fs.unlinkSync(optionsFile); } catch {}
   }
 
   const run = {
@@ -402,17 +442,59 @@ function triggerPipeline() {
   currentPipelineRun = run;
   lastPipelineRun = run;
 
-  currentChild = execFile(N8N_BIN, ['execute', `--id=${PIPELINE_ENTRY_ID}`, '--rawOutput'], {
-    cwd: ROOT_DIR,
-    env: {
-      ...process.env,
-      N8N_RUNNERS_BROKER_PORT: process.env.N8N_EXECUTE_BROKER_PORT || '5680',
-      N8N_RESTRICT_FILE_ACCESS_TO: process.env.N8N_RESTRICT_FILE_ACCESS_TO || ROOT_DIR,
-    },
-    timeout: 8 * 60 * 1000,
-    maxBuffer: 20 * 1024 * 1024,
-  }, (err, stdout, stderr) => {
+  const finishRun = (err, stdout, stderr) => {
     currentChild = null;
+    try { fs.unlinkSync(optionsFile); } catch {}
+    if (currentPipelineRun === run) {
+      currentPipelineRun = null;
+      run.finishedAt = new Date().toISOString();
+      if (err) {
+        run.status = 'error';
+        run.error = [stderr, stdout, err.message].filter(Boolean).join('\n').trim().slice(-400);
+      } else {
+        run.status = 'success';
+      }
+    }
+  };
+
+  if (hasCustomOptions) {
+    currentChild = runN8nWorkflow('WHWF1ResearchStory1', (err, stdout, stderr) => {
+      try { fs.unlinkSync(optionsFile); } catch {}
+      if (err) return finishRun(err, stdout, stderr);
+      currentChild = runN8nWorkflow(PIPELINE_ENTRY_ID, finishRun);
+    });
+  } else {
+    currentChild = runN8nWorkflow(PIPELINE_ENTRY_ID, finishRun);
+  }
+
+  return { run, status: 202 };
+}
+
+function rerenderStory(storyId) {
+  if (currentPipelineRun) {
+    return { error: 'Pipeline is already running', status: 409 };
+  }
+  const cleanId = String(storyId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!cleanId) return { error: 'Invalid story ID', status: 400 };
+
+  const rerenderFile = path.join(ROOT_DIR, '.studio-rerender.json');
+  fs.writeFileSync(rerenderFile, JSON.stringify({ storyId: cleanId }), 'utf8');
+
+  const run = {
+    runId: `run-${runSeq++}`,
+    workflowId: 'eSrdqP9mk6hg6Xls',
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    error: null,
+  };
+
+  currentPipelineRun = run;
+  lastPipelineRun = run;
+
+  currentChild = runN8nWorkflow('eSrdqP9mk6hg6Xls', (err, stdout, stderr) => {
+    currentChild = null;
+    try { fs.unlinkSync(rerenderFile); } catch {}
     if (currentPipelineRun === run) {
       currentPipelineRun = null;
       run.finishedAt = new Date().toISOString();
@@ -428,7 +510,7 @@ function triggerPipeline() {
   return { run, status: 202 };
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   const pathname = decodeURIComponent(url.pathname);
 
@@ -441,7 +523,15 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'POST' && pathname === '/api/pipeline/trigger') {
-    const result = triggerPipeline();
+    const body = await readJsonBody(req);
+    const result = triggerPipeline(body);
+    if (result.error) return sendJson(res, result.status, { error: result.error });
+    return sendJson(res, result.status, { run: result.run });
+  }
+
+  const rerenderMatch = req.method === 'POST' && pathname.match(/^\/api\/stories\/([^/]+)\/rerender$/);
+  if (rerenderMatch) {
+    const result = rerenderStory(rerenderMatch[1]);
     if (result.error) return sendJson(res, result.status, { error: result.error });
     return sendJson(res, result.status, { run: result.run });
   }

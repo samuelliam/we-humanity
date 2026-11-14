@@ -547,11 +547,23 @@ function renderSelectedStory() {
   updateNavButtons(0);
 }
 
+const subthemeSelectEl = document.getElementById('subtheme-select');
+const customSubjectInputEl = document.getElementById('custom-subject-input');
+const rerenderBtn = document.getElementById('rerender-btn');
+
 async function triggerPipeline() {
   runPipelineBtn.disabled = true;
   runPipelineBtn.textContent = 'Starting…';
+  const payload = {
+    subTheme: subthemeSelectEl ? subthemeSelectEl.value : '',
+    subject: customSubjectInputEl ? customSubjectInputEl.value.trim() : '',
+  };
   try {
-    const res = await fetch('/api/pipeline/trigger', { method: 'POST' });
+    const res = await fetch('/api/pipeline/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       pipelineBadgeEl.dataset.state = 'error';
@@ -572,6 +584,35 @@ async function triggerPipeline() {
     return;
   }
   await loadAll();
+}
+
+async function rerenderCurrentStory() {
+  if (!selectedStoryId || !rerenderBtn) return;
+  rerenderBtn.disabled = true;
+  rerenderBtn.textContent = 'Re-styling…';
+  try {
+    const res = await fetch(`/api/stories/${encodeURIComponent(selectedStoryId)}/rerender`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      pipelineBadgeEl.dataset.state = 'error';
+      pipelineBadgeEl.textContent = 'Error';
+      pipelineSummaryEl.dataset.error = 'true';
+      pipelineSummaryEl.textContent = err.error || 'Failed to re-style carousel.';
+    }
+  } catch (err) {
+    pipelineBadgeEl.dataset.state = 'error';
+    pipelineBadgeEl.textContent = 'Error';
+    pipelineSummaryEl.dataset.error = 'true';
+    pipelineSummaryEl.textContent = err.message || 'Network error re-styling carousel.';
+  } finally {
+    rerenderBtn.disabled = false;
+    rerenderBtn.textContent = 'Re-style Carousel';
+  }
+  await loadAll();
+}
+
+if (rerenderBtn) {
+  rerenderBtn.addEventListener('click', rerenderCurrentStory);
 }
 
 async function loadAll() {

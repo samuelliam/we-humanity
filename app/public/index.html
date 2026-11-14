@@ -28,6 +28,22 @@
           <h2 id="workflows-heading">Pipeline</h2>
           <span class="badge" id="pipeline-status-badge">Idle</span>
         </div>
+        <div class="pipeline-controls">
+          <label class="control-field">
+            <span>Sub-theme</span>
+            <select id="subtheme-select">
+              <option value="">Auto-rotate (all 4 themes)</option>
+              <option value="Physical Craft &amp; Vessels">Physical Craft &amp; Vessels</option>
+              <option value="Architecture &amp; Infrastructure">Architecture &amp; Infrastructure</option>
+              <option value="Scientific Instruments &amp; Mapping">Scientific Instruments &amp; Mapping</option>
+              <option value="Digital Interfaces &amp; Information Design">Digital Interfaces &amp; Information Design</option>
+            </select>
+          </label>
+          <label class="control-field">
+            <span>Custom topic (optional)</span>
+            <input type="text" id="custom-subject-input" placeholder="e.g. Susan Kare Macintosh Icons">
+          </label>
+        </div>
         <button type="button" id="run-pipeline-btn" class="btn btn-primary btn-block">Generate Story &amp; Carousel</button>
         <div class="pipeline-progress" id="pipeline-progress">
           <progress id="pipeline-bar" max="4" value="0" aria-label="Pipeline progress"></progress>
@@ -62,6 +78,7 @@
             <h2 class="story-title" id="story-title"></h2>
             <p class="story-submeta" id="story-submeta"></p>
           </div>
+          <button type="button" id="rerender-btn" class="btn btn-secondary" title="Re-run WF4 Designer AI &amp; slide renderer for this story">Re-style Carousel</button>
         </div>
 
         <div class="tabs">
