@@ -3,6 +3,7 @@
 
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFile, execFileSync } = require('child_process');
 
@@ -209,6 +210,8 @@ function getStories() {
       linkedinCaption: meta.linkedinCaption || '',
       xThread: meta.xThread || null,
       credits: meta.credits || [],
+      approved: Boolean(meta.approved),
+      approvedAt: meta.approvedAt || null,
       renderedAt: meta.renderedAt || new Date(latestMtime).toISOString(),
       executionId: meta.executionId || null,
       slides,
@@ -561,6 +564,94 @@ const server = http.createServer(async (req, res) => {
     const result = stopPipeline();
     if (result.error) return sendJson(res, result.status, { error: result.error });
     return sendJson(res, result.status, { run: result.run });
+  }
+
+  const exportMatch = req.method === 'GET' && pathname.match(/^\/api\/stories\/([^/]+)\/export\.zip$/);
+  if (exportMatch) {
+    const story = getStories().find((s) => s.storyId === exportMatch[1]);
+    if (!story) return sendJson(res, 404, { error: 'Story not found' });
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wh-export-'));
+    try {
+      const files = [];
+      for (const s of story.slides) {
+        const src = path.join(RENDERS_DIR, s.filename);
+        const destName = `slide_${String(s.slideIndex).padStart(2, '0')}.png`;
+        const dest = path.join(tmpDir, destName);
+        fs.copyFileSync(src, dest);
+        files.push(dest);
+      }
+      const captionsText = [
+        `TITLE: ${story.title}`,
+        `PILLAR: ${story.pillar}`,
+        '',
+        '=== INSTAGRAM CAPTION ===',
+        story.instagramCaption || '',
+        '',
+        '=== LINKEDIN CAPTION ===',
+        story.linkedinCaption || '',
+        '',
+        '=== X THREAD (1/2) ===',
+        story.xThread?.post1 || '',
+        '',
+        '=== X THREAD (2/2) ===',
+        story.xThread?.post2 || '',
+        '',
+        '=== IMAGE CREDITS ===',
+        ...(story.credits || []),
+        '',
+      ].join('\n');
+      const captionsPath = path.join(tmpDir, 'captions.txt');
+      fs.writeFileSync(captionsPath, captionsText, 'utf8');
+      files.push(captionsPath);
+
+      const zipPath = path.join(tmpDir, 'carousel.zip');
+      execFileSync('/usr/bin/zip', ['-j', '-q', zipPath, ...files]);
+      const zipBuf = fs.readFileSync(zipPath);
+      const slug = (story.title || story.storyId).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || story.storyId;
+
+      res.writeHead(200, {
+        'Content-Type': 'application/zip',
+        'Content-Length': zipBuf.length,
+        'Content-Disposition': `attachment; filename="${slug}-carousel.zip"`,
+        'Cache-Control': 'no-store',
+      });
+      return res.end(zipBuf);
+    } catch (err) {
+      return sendJson(res, 500, { error: err.message || 'Export failed' });
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
+  const approveMatch = req.method === 'POST' && pathname.match(/^\/api\/stories\/([^/]+)\/approve$/);
+  if (approveMatch) {
+    const cleanId = String(approveMatch[1] || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const story = getStories().find((s) => s.storyId === cleanId);
+    if (!story) return sendJson(res, 404, { error: 'Story not found' });
+
+    const metaPath = path.join(RENDERS_DIR, `${cleanId}.meta.json`);
+    let meta = {};
+    if (fs.existsSync(metaPath)) {
+      try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch {}
+    }
+    meta.approved = true;
+    meta.approvedAt = new Date().toISOString();
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8');
+
+    let airtableSynced = false;
+    const pat = process.env.AIRTABLE_PAT || process.env.AIRTABLE_API_KEY || '';
+    if (pat) {
+      try {
+        const atRes = await fetch(`https://api.airtable.com/v0/appgMOSrdu95bw0nf/tblPgv6MsUEMNnvCn/${encodeURIComponent(cleanId)}`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: { Status: 'Approved' } }),
+        });
+        airtableSynced = atRes.ok;
+      } catch {}
+    }
+    return sendJson(res, 200, { ok: true, approved: true, approvedAt: meta.approvedAt, airtableSynced });
   }
 
   const rerenderMatch = req.method === 'POST' && pathname.match(/^\/api\/stories\/([^/]+)\/rerender$/);

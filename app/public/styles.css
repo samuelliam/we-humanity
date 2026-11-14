@@ -506,6 +506,26 @@ body {
   margin-block-end: 0.9rem;
 }
 
+.story-meta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.story-meta-actions a.btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btn-approved {
+  background: #ecfdf3;
+  color: #027a48;
+  border-color: #a6f4c5;
+}
+
 .pillar-tag {
   display: inline-block;
   font-size: 0.72rem;

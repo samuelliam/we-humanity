@@ -470,7 +470,15 @@ function renderSelectedStory() {
 
   storyPillarEl.textContent = story.pillar || 'WE, HUMANITY';
   storyTitleEl.textContent = story.title;
-  storySubmetaEl.textContent = `Story ID: ${story.storyId} · Rendered ${formatTime(story.renderedAt)}`;
+  storySubmetaEl.textContent = `Story ID: ${story.storyId} · Rendered ${formatTime(story.renderedAt)}${story.approved ? ' · Approved' : ''}`;
+  if (exportZipBtn) {
+    exportZipBtn.href = `/api/stories/${encodeURIComponent(story.storyId)}/export.zip`;
+  }
+  if (approveStoryBtn) {
+    approveStoryBtn.textContent = story.approved ? 'Approved ✓' : 'Approve';
+    approveStoryBtn.classList.toggle('btn-approved', Boolean(story.approved));
+    approveStoryBtn.disabled = Boolean(story.approved);
+  }
   igPillarSubEl.textContent = story.pillar || 'Design & Engineering';
 
   igCaptionEl.textContent = story.instagramCaption || '(No Instagram caption recorded)';
@@ -555,6 +563,8 @@ const subthemeSelectEl = document.getElementById('subtheme-select');
 const customSubjectInputEl = document.getElementById('custom-subject-input');
 const rerenderBtn = document.getElementById('rerender-btn');
 const stopPipelineBtn = document.getElementById('stop-pipeline-btn');
+const approveStoryBtn = document.getElementById('approve-story-btn');
+const exportZipBtn = document.getElementById('export-zip-btn');
 
 async function triggerPipeline() {
   runPipelineBtn.disabled = true;
@@ -618,6 +628,18 @@ async function rerenderCurrentStory() {
 
 if (rerenderBtn) {
   rerenderBtn.addEventListener('click', rerenderCurrentStory);
+}
+
+if (approveStoryBtn) {
+  approveStoryBtn.addEventListener('click', async () => {
+    if (!selectedStoryId) return;
+    approveStoryBtn.disabled = true;
+    approveStoryBtn.textContent = 'Approving…';
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(selectedStoryId)}/approve`, { method: 'POST' });
+      if (res.ok) await loadAll();
+    } catch {}
+  });
 }
 
 async function stopPipeline() {
