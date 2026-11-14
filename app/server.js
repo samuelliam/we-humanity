@@ -314,7 +314,11 @@ function triggerPipeline() {
 
   currentChild = execFile(N8N_BIN, ['execute', `--id=${PIPELINE_ENTRY_ID}`, '--rawOutput'], {
     cwd: ROOT_DIR,
-    env: { ...process.env, N8N_RUNNERS_BROKER_PORT: process.env.N8N_EXECUTE_BROKER_PORT || '5680' },
+    env: {
+      ...process.env,
+      N8N_RUNNERS_BROKER_PORT: process.env.N8N_EXECUTE_BROKER_PORT || '5680',
+      N8N_RESTRICT_FILE_ACCESS_TO: process.env.N8N_RESTRICT_FILE_ACCESS_TO || ROOT_DIR,
+    },
     timeout: 8 * 60 * 1000,
     maxBuffer: 20 * 1024 * 1024,
   }, (err, stdout, stderr) => {
