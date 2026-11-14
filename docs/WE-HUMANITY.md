@@ -59,15 +59,16 @@ When a story is adapted into a `1080×1350` (4:5 portrait) carousel for Instagra
    - **Body (`31px`):** 28–35 plain-language words over a darkened editorial gradient scrim (`editorialScrim`) for effortless mobile readability.
    - **Standout Detail:** Surfaces the single most surprising physical or interface detail (a tool, measurement, pixel grid constraint, or clever trick) on its own dedicated slide.
 3. **Final Slide (Slide N) — Legacy & Single-Question Pill CTA:**
-   - Carries the core **Remember** takeaway (22–30 words).
+   - Carries the core **Remember** takeaway (22–30 words), framed as a quotable, save-worthy design principle for builders and designers.
    - Ends with **one short question** (4–6 words, e.g., *"Which ancient innovation next?"*) rendered inside its own separate translucent pill button—never combined with body text or highlighted in yellow.
+   - Every slide includes a subtle `@by.wehumanity` handle mark in the bottom-right footer so Story reshares and saves credit the series.
 
 ### Highlighting Discipline
 - **Maximum 1 to 3 words per slide:** At most one short phrase (1–3 words) per slide is highlighted in warm gold (`#F5B841` on photo slides, `#1D4ED8` on card slides).
 - Enforced both in the editorial prompt and deterministically in code (`highlightBudget = { remaining: 3 }` per slide).
 
 ### Captions
-- **Instagram:** Opens with a keyword-rich first-line hook, followed by 2 short plain-language paragraphs, a question prompt, and **3 to 5 relevant hashtags**.
+- **Instagram (`@by.wehumanity`):** Opens with a searchable, keyword-rich first-line hook naming the exact artifact/subject and design discipline, followed by 2 short plain-language paragraphs, a natural save/share cue + question prompt, and **3 to 5 relevant hashtags**.
 - **LinkedIn:** Keyword-rich opening line, concise narrative summary, and full per-slide image attributions.
 - **X Thread:** 2-post punchy summary thread.
 
