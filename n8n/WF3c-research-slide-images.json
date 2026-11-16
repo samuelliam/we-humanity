@@ -1,0 +1,1716 @@
+[
+  {
+    "name": "WH - WF3c Research Slide Images",
+    "nodes": [
+      {
+        "parameters": {},
+        "name": "Manual Trigger",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          80
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "search",
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_BASE_ID"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_TABLE_ID"
+          },
+          "filterByFormula": "={{ $json.storyId ? \"RECORD_ID()='\" + $json.storyId + \"'\" : \"AND(LEN({Assets}&'')=0, OR({Status}='drafted', {Status}='needs_review', {Status}='Approved'))\" }}",
+          "returnAll": false,
+          "limit": 1,
+          "options": {}
+        },
+        "name": "Get Next Story",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          224,
+          80
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "parameters": {
+          "jsCode": "const s=$json; const prompt=\"You are planning the slides (between 4 and 7 slides) of a social carousel for WE, HUMANITY, a reverent but not stuffy series about human creativity, design and craftsmanship across both physical artifacts and digital/information design.\\n\\nStory title: {{title}}\\nPillar: {{pillar}}\\nGlance: {{glance}}\\nExplore: {{explore}}\\nDeep dive: {{deep_dive}}\\nRemember: {{remember}}\\n\\nRules:\\n- Between 4 and 7 slides: choose the count that best fits the story's distinct visual beats without padding. Follow a natural constraint-to-takeaway arc: Slide 1 (cover hook), Slide 2 (the hard constraint / historical context), Slide 3-N-1 (the exact mechanism, craft, or interface decision), and Final Slide (what it means / legacy).\\n- PREFER REAL ARCHIVAL PHOTOS ON EVERY SLIDE: Every slide MUST target a real, existing, photographed museum object, fragment, hardware specimen, interface sheet, or historical landmark on Wikimedia Commons or Openverse so all slides use authentic archival photography rather than AI synthesis whenever possible. Never request unphotographed hypothetical objects or generic stone slabs that force AI fallbacks when multiple views or fragments of the primary artifact exist in museum collections.\\n- REAL PHOTOS OF THE HERO ARTIFACT ON COVER & FINAL SLIDE: Slide 1 (cover) and the final slide (remember) MUST target the story's primary artifact, vessel, structure, hardware unit, or close-up detail itself with canonical English museum/archive search_queries. NEVER target a generic building exterior, storefront window, or unrelated café/street scene for the final slide.\\n- BRIGHT, CLEAR VISUALS: Favor bright, well-lit, recognizable views where structural or interface details are clearly visible — NEVER dark, muddy, silhouetted, or generic landscape textures.\\n- Give 2–3 `search_queries` that would find that exact subject on Wikimedia Commons (short, specific, English, using museum names or catalog terms where helpful, e.g. \\\"Antikythera Mechanism NAMA\\\", \\\"Antikythera Fragment C\\\").\\n- Do not invent facts. Do not write slide text or captions.\\n- Flag anything you are unsure exists as `\\\"verify\\\": true`.\\n\\nReturn ONLY JSON in this shape:\\n{\\\"slides\\\":[{\\\"slide_index\\\":1,\\\"slide_type\\\":\\\"cover|object|person|process|detail|remember\\\",\\\"subject\\\":\\\"...\\\",\\\"search_queries\\\":[\\\"...\\\",\\\"...\\\"],\\\"note\\\":\\\"\\\",\\\"verify\\\":false}, ... 4 to 7 items]}\\n\";return [{json:{...s,planningPrompt:prompt.replace(\"{{title}}\",s.Title).replace(\"{{pillar}}\",s.Pillar).replace(\"{{glance}}\",s.Glance).replace(\"{{explore}}\",s.Explore).replace(\"{{deep_dive}}\",s[\"Deep Dive\"]).replace(\"{{remember}}\",s.Remember)}}];"
+        },
+        "name": "Build Planning Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          448,
+          80
+        ]
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "models/gemini-3.8-flash",
+            "mode": "list",
+            "cachedResultName": "models/gemini-3.8-flash"
+          },
+          "messages": {
+            "values": [
+              {
+                "content": "={{ $json.planningPrompt }}"
+              }
+            ]
+          },
+          "jsonOutput": true,
+          "builtInTools": {},
+          "options": {}
+        },
+        "name": "Plan Slides",
+        "type": "@n8n/n8n-nodes-langchain.googleGemini",
+        "typeVersion": 1.1,
+        "position": [
+          672,
+          80
+        ],
+        "retryOnFail": true,
+        "maxTries": 4,
+        "waitBetweenTries": 3000
+      },
+      {
+        "parameters": {
+          "jsCode": "const x=$input.first().json;\nlet p=x;\nif(!Array.isArray(x)&&!x.slides){\nconst raw=(x.content?.parts?.map(p=>p.text||\"\").join(\"\")||x.text||x.output||\"\").replace(/```(?:json)?/g,\"\").trim();\np=JSON.parse(raw);\n}\nconst slides=Array.isArray(p)?p:p.slides;\nif(!Array.isArray(slides)||slides.length<4||slides.length>7)throw new Error(\"Invalid slide plan: expected 4 to 7 slides\");\nconst seen=new Set();\nreturn slides.map((s,i)=>{if(!Number.isInteger(s.slide_index)||s.slide_index<1||s.slide_index>slides.length||seen.has(s.slide_index)||!s.subject||!s.slide_type||!Array.isArray(s.search_queries)||s.search_queries.length<2||s.search_queries.length>3||s.search_queries.some(q=>typeof q!==\"string\"||!q.trim()))throw new Error(\"Invalid slide plan entry \"+(i+1));seen.add(s.slide_index);return {json:s,pairedItem:{item:0}};});"
+        },
+        "name": "Validate Plan",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1024,
+          80
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Descriptor words such as \"detail\" or \"controls\" make Commons search return\n// unrelated files, so drop them and de-duplicate the remaining queries.\nconst GENERIC = new Set(['detail','details','closeup','close-up','close','view','angle','shot','photo','photograph','image','controls','knobs','tonearm','macro','background']);\nreturn $input.all().flatMap((x, i) => {\n  const seen = new Set();\n  const queries = [];\n  for (const q of x.json.search_queries || []) {\n    const cleaned = String(q).split(/\\s+/).filter((wd) => wd && !GENERIC.has(wd.toLowerCase())).join(' ').trim();\n    const key = cleaned.toLowerCase();\n    if (cleaned && !seen.has(key)) { seen.add(key); queries.push(cleaned); }\n  }\n  return queries.map((query) => ({ json: { ...x.json, query }, pairedItem: { item: i } }));\n});\n"
+        },
+        "name": "Expand Queries",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1248,
+          80
+        ]
+      },
+      {
+        "parameters": {
+          "url": "=https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=20&gsrsearch={{ encodeURIComponent($json.query + ' filetype:bitmap') }}&prop=imageinfo&iiprop=url%7Cextmetadata%7Cmime%7Csize&iiurlwidth=1600",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "WeHumanity/1.0 (licensed editorial image research; contact: [contact-email])"
+              },
+              {
+                "name": "Connection",
+                "value": "close"
+              }
+            ]
+          },
+          "options": {
+            "batching": {
+              "batch": {
+                "batchSize": 3
+              }
+            },
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            },
+            "timeout": 8000
+          }
+        },
+        "name": "Commons Search",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1696,
+          -64
+        ],
+        "retryOnFail": true,
+        "waitBetweenTries": 1000,
+        "maxTries": 2
+      },
+      {
+        "parameters": {
+          "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n    if (c.height && c.height < 600) reasons.push('too short (' + c.height + 'px tall)');\n    if (c.width && c.height) {\n      const aspect = c.width / c.height;\n      if (aspect > 2.2 || aspect < 0.35) reasons.push('extreme aspect ratio (' + c.width + 'x' + c.height + ')');\n    }\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// Commons page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n\n// Rank by relevance to this slide's own words, then licence, then width.\n// The old order was licence first, so public-domain scans outranked the real\n// subject and slice(0,5) then discarded the correct CC BY / CC BY-SA photos.\nconst STOP = new Set(['the','and','of','for','with','by','designed','a','an','in','on','at','from','to','its','his','her','their']);\nfunction slideTokens(slide) {\n  const text = [slide.subject || '', ...(slide.search_queries || [])].join(' ').toLowerCase();\n  const out = new Set();\n  for (const w of text.split(/[^a-z0-9]+/).filter(Boolean)) {\n    if (w.length >= 3 && !STOP.has(w)) out.add(w);\n    else if (/[a-z]/.test(w) && /[0-9]/.test(w)) out.add(w);\n  }\n  return [...out];\n}\nconst squash = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');\nconst wordsOf = (v) => new Set(String(v || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));\n// Plain words must match a whole word (so 'braun' does not match 'Braunerova').\n// Tokens containing a digit (sk4, et66, 606) match inside the squashed string,\n// because titles write them as 'SK 4' or 'Vitsoe606'.\nfunction relevance(c, tokens) {\n  const text = c.title + ' ' + c.description;\n  const words = wordsOf(text);\n  const hay = squash(text);\n  let n = 0;\n  for (const t of tokens) {\n    if (/[0-9]/.test(t)) { if (hay.includes(t)) n++; }\n    else if (words.has(t)) n++;\n  }\n  return n;\n}\nfunction rankForSlide(candidates, tokens) {\n  const licenceRank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  const scored = candidates.map((c) => ({ c, hits: relevance(c, tokens) }));\n  const best = scored.reduce((m, x) => Math.max(m, x.hits), 0);\n  const keep = best > 0 ? scored.filter((x) => x.hits > 0) : scored;\n  return keep\n    .sort((a, b) => (b.hits - a.hits)\n      || ((b.c.width || 0) - (a.c.width || 0))\n      || (licenceRank[a.c.licence] - licenceRank[b.c.licence]))\n    .map((x) => x.c);\n}\n\nconst groups = new Map();\nconst qs = $('Expand Queries').all();\nfor (const [i, r] of $input.all().entries()) {\n  const m = qs[i].json;\n  let g = groups.get(m.slide_index);\n  if (!g) { g = { ...m, pages: new Map() }; groups.set(m.slide_index, g); }\n  for (const p of Object.values(r.json.query?.pages || {})) g.pages.set(p.pageid, { ...p, foundQuery: m.query });\n}\nreturn [...groups.values()].map((g) => {\n  const usable = [...g.pages.values()]\n    .map((p) => ({ ...parseCommonsPage(p), foundQuery: p.foundQuery }))\n    .filter((c) => c.ok\n      && !/\\b(?:NC|ND)\\b/i.test(c.licenceRaw)\n      && c.downloadUrl.startsWith('https://')\n      && /^https:\\/\\/(?:upload|thumb)\\.wikimedia\\.org\\//.test(c.downloadUrl)\n      && c.pageUrl.startsWith('https://commons.wikimedia.org/'))\n    .filter((c) => filterCandidate(c).pass);\n  const candidates = rankForSlide(usable, slideTokens(g)).slice(0, 5);\n  const { pages, ...slide } = g;\n  return { json: { ...slide, candidates, researchStatus: candidates.length ? 'ready' : 'no_candidates' }, pairedItem: { item: 0 } };\n});\n"
+        },
+        "name": "Parse and Filter",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1696,
+          128
+        ]
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "models/gemini-3.8-flash",
+            "mode": "list",
+            "cachedResultName": "models/gemini-3.8-flash"
+          },
+          "messages": {
+            "values": [
+              {
+                "content": "={{ `You are checking whether Wikimedia Commons or Openverse images show the requested subjects for a multi-slide story.\n\nStory context: ${$('Get Next Story').first().json.Title}\n\nSlides and their candidate pools (JSON array; use pageid to refer to candidates):\n${JSON.stringify($json.compactSlides)}\n\nFor EACH slide, choose the single candidate that best shows the requested subject: the object/scene/hardware/specimen itself, recognisable, well-lit, and not an unrelated object. Reject photos where unrelated seasonal window displays, flowers, storefront reflections, or crowds obscure the subject. Avoid picking the same pageid for two different slides when another valid candidate exists. Person-led images are allowed if relevant. Reject unrelated diagrams or clipart, unless the subject itself is an interface screen, typography specimen, historical map/chart, or blueprint.\n\nIMPORTANT — AVOID AI FALLBACKS WHEN REAL PHOTOS EXIST: Strongly prefer selecting a real Wikimedia Commons or Openverse museum/archival photograph (such as a different surviving fragment, rear view, close-up, or museum exhibition replica of the story's primary artifact/hardware) whenever any candidate genuinely depicts the story's primary subject, rather than returning null and forcing an AI-generated image. On Slide 1 (cover) and the final slide, do NOT select a generic building exterior or unrelated café/street interior when the primary artifact itself is not clearly shown. If the candidate is a modern replica or model, mention \"(modern replica)\" in your reason.\n\nRate confidence per slide:\n- high: title or description clearly identifies the requested subject or a genuine museum view/fragment of the story's artifact.\n- medium: plausibly the subject or a museum reconstruction/model of the artifact.\n- low: unrelated, wrong artifact, or cannot tell.\n\nIf none match for a slide, return chosen_pageid null with confidence low.\n\nReturn ONLY JSON: {\"choices\": [{\"slide_index\": 1, \"chosen_pageid\": 123 or null, \"confidence\": \"high|medium|low\", \"reason\": \"one sentence\"}]}` }}"
+              }
+            ]
+          },
+          "jsonOutput": true,
+          "builtInTools": {},
+          "options": {}
+        },
+        "name": "Choose Candidate",
+        "type": "@n8n/n8n-nodes-langchain.googleGemini",
+        "typeVersion": 1.1,
+        "position": [
+          2144,
+          80
+        ],
+        "retryOnFail": true,
+        "maxTries": 4,
+        "waitBetweenTries": 3000
+      },
+      {
+        "parameters": {
+          "jsCode": "function parse(x){if(x.choices||Object.hasOwn(x,'chosen_pageid'))return x;const raw=x.content?.parts?.map(p=>p.text||'').join('')||x.text||x.output||'';return JSON.parse(raw.slice(raw.indexOf('{'),raw.lastIndexOf('}')+1));}\nconst base=$('Prepare Batch Choice').first().json.slides;\nconst parsed=parse($input.first().json);\nconst choiceList=Array.isArray(parsed.choices)?parsed.choices:[parsed];\nconst bySlide=new Map(choiceList.map(c=>[Number(c.slide_index),c]));\nconst used=new Map();\nreturn base.map((s,i)=>{\n  const c=bySlide.get(Number(s.slide_index))||choiceList[i]||{chosen_pageid:null,confidence:'low',reason:'No decision returned.'};\n  const skip=s.subject.toLowerCase()==='abstract';\n  const chosen=(s.candidates||[]).find(z=>String(z.pageid)===String(c.chosen_pageid));\n  let pick=null,dupOf=null;\n  if(!skip&&chosen&&c.confidence!=='low'){\n    if(!used.has(chosen.pageid)){ pick=chosen; }\n    else {\n      dupOf=used.get(chosen.pageid);\n      pick=(s.candidates||[]).find(z=>!used.has(z.pageid))||null;\n    }\n    if(pick) used.set(pick.pageid, s.slide_index);\n  }\n  const ok=!skip&&!s.verify&&pick&&String(pick.pageid)===String(c.chosen_pageid)&&c.confidence==='high';\n  const reason=[String(c.reason||''),dupOf?('Same image as slide '+dupOf+', so the next unused candidate from the pool was taken.'):''].filter(Boolean).join(' ');\n  const aiFallbackPrompt=(!skip&&!pick)?['Bright, well-lit archival museum or studio documentary photograph of '+(s.subject||'historical or digital design artifact')+'.','Even mid-tone studio and natural daylight fill, lifted shadow detail, warm light-stone museum or clean archival desk backdrop, high surface clarity so material textures, hardware surfaces, typography, and structural details remain clearly visible.','Shot on medium format camera, 80mm lens, f/8 aperture, razor-sharp optical focus, natural fine film grain.','Avoid dark, low-key, silhouetted, or underexposed lighting. No overlaid text, no watermarks, no CGI render look.'].join(' '):'';\n  return {json:{...s,chosen:pick,confidence:c.confidence,reason,duplicate_of:dupOf,aiFallbackPrompt,result:skip?'text_only':ok?'selected':pick?'needs_review':dupOf?'duplicate':'no_image'},pairedItem:{item:0}};\n});"
+        },
+        "name": "Apply Choice",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2496,
+          80
+        ]
+      },
+      {
+        "parameters": {
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_BASE_ID"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_TABLE_ID"
+          },
+          "options": {}
+        },
+        "name": "Read Current Story",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          2944,
+          256
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "parameters": {
+          "jsCode": "const s=$input.first().json;const choices=$('Collect Choices').all().map(x=>x.json);const bad=choices.filter(c=>!['selected','text_only'].includes(c.result));const flags=(s.Flags||'').split(';').map(x=>x.trim()).filter(Boolean);if(bad.length&&!flags.includes('image needs review'))flags.push('image needs review');const log='WF3c '+new Date().toISOString()+'\\n'+choices.map(c=>'Slide '+c.slide_index+': '+c.subject+' — '+c.result+' ('+c.confidence+'): '+c.reason).join('\\n');return [{json:{id:s.id,Flags:flags.join('; '),'Reviewer Notes':(s['Reviewer Notes']?s['Reviewer Notes']+'\\n\\n':'')+log}}];"
+        },
+        "name": "Summarize Research",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3168,
+          256
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "update",
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_BASE_ID"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_TABLE_ID"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Flags": "={{ $json.Flags }}",
+              "Reviewer Notes": "={{ $json['Reviewer Notes'] }}"
+            },
+            "matchingColumns": [
+              "id"
+            ],
+            "schema": [
+              {
+                "displayName": "id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Flags",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Reviewer Notes",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "name": "Record Research Review",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          3392,
+          256
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "parameters": {
+          "jsCode": "return $('Collect Choices').all().filter(x=>x.json.result==='selected'||x.json.result==='needs_review'||(!x.json.chosen&&x.json.aiFallbackPrompt&&x.json.result!=='text_only')).map((x,i)=>({json:x.json,pairedItem:{item:0}}));"
+        },
+        "name": "Selected Photos",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3616,
+          256
+        ]
+      },
+      {
+        "parameters": {
+          "url": "={{ $json.chosen.downloadUrl.split('?')[0] }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "WeHumanity/1.0 (licensed editorial image research; contact: [contact-email])"
+              },
+              {
+                "name": "Connection",
+                "value": "close"
+              }
+            ]
+          },
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "file"
+              }
+            },
+            "timeout": 10000
+          }
+        },
+        "name": "Download Image",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          4064,
+          -16
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 1000,
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const out=[];for(const [i,x]of $input.all().entries()){const m=$('Needs AI Generation?').itemMatching(i).json;const b=await this.helpers.getBinaryDataBuffer(i,'data');if(!/^image\\//.test(x.binary?.data?.mimeType||'')||b.length<=10240||!(b[0]===0xff&&b[1]===0xd8)&&!(b[0]===0x89&&b[1]===0x50)&&!(b.toString('ascii',0,4)==='RIFF')&&!(b.toString('ascii',0,2)==='II')&&!(b.toString('ascii',0,2)==='MM'))throw new Error('Download verification failed for slide '+m.slide_index+': '+(x.binary?.data?.mimeType||'missing MIME')+', '+b.length+' bytes');out.push({json:{...m,localPath:$env.WE_HUMANITY_ROOT + '/assets/' +$('Get Next Story').first().json.id+'_slide_'+m.slide_index+'.'+(x.binary.data.fileExtension||'jpg')},binary:x.binary,pairedItem:{item:i}});}return out;"
+        },
+        "name": "Verify Image",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4288,
+          -112
+        ],
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "operation": "write",
+          "fileName": "={{ $env.WE_HUMANITY_ROOT + '/assets/' + $('Get Next Story').first().json.id + '_slide_' + $json.slide_index + '.' + ($binary.data.fileExtension || 'jpg') }}",
+          "options": {}
+        },
+        "name": "Save File",
+        "type": "n8n-nodes-base.readWriteFile",
+        "typeVersion": 1,
+        "position": [
+          4288,
+          256
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n    if (c.height && c.height < 600) reasons.push('too short (' + c.height + 'px tall)');\n    if (c.width && c.height) {\n      const aspect = c.width / c.height;\n      if (aspect > 2.2 || aspect < 0.35) reasons.push('extreme aspect ratio (' + c.width + 'x' + c.height + ')');\n    }\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates without slide context. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\nconst STOP_WORDS = new Set(['the','and','of','for','with','by','designed','a','an','in','on','at','from','to','its','his','her','their']);\n\n// Extract search/subject tokens from a slide object for relevance scoring.\nfunction slideTokens(slide) {\n  const text = [(slide && slide.subject) || '', ...((slide && slide.search_queries) || [])].join(' ').toLowerCase();\n  const out = new Set();\n  for (const w of text.split(/[^a-z0-9]+/).filter(Boolean)) {\n    if (w.length >= 3 && !STOP_WORDS.has(w)) out.add(w);\n    else if (/[a-z]/.test(w) && /[0-9]/.test(w)) out.add(w);\n  }\n  return [...out];\n}\n\n// Count how many slide tokens match a candidate's title + description.\n// Plain words require whole-word match (so 'braun' does not match 'Braunerova');\n// digit-containing tokens match in the squashed string (so 'sk4' matches 'SK 4').\nfunction relevance(c, tokens) {\n  const text = (c.title || '') + ' ' + (c.description || '');\n  const words = new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));\n  const hay = text.toLowerCase().replace(/[^a-z0-9]+/g, '');\n  let n = 0;\n  for (const t of tokens) {\n    if (/[0-9]/.test(t)) { if (hay.includes(t)) n++; }\n    else if (words.has(t)) n++;\n  }\n  return n;\n}\n\n// Filter and rank candidates for a slide: relevance hits first, then width, then licence tier.\n// Drops zero-hit candidates when at least one candidate has a hit.\nfunction rankForSlide(candidates, tokens) {\n  const licenceRank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  const passed = candidates.filter((c) => filterCandidate(c).pass);\n  const scored = passed.map((c) => ({ c, hits: relevance(c, tokens) }));\n  const best = scored.reduce((m, x) => Math.max(m, x.hits), 0);\n  const keep = best > 0 ? scored.filter((x) => x.hits > 0) : scored;\n  return keep\n    .sort((a, b) => (b.hits - a.hits)\n      || ((b.c.width || 0) - (a.c.width || 0))\n      || (licenceRank[a.c.licence] - licenceRank[b.c.licence]))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// source page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  if (c.tier === 'Tier 2: Openverse' || (c.sourceProvider && c.sourceProvider !== 'Wikimedia Commons')) {\n    return buildOpenverseCredit(c);\n  }\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n// Normalise an Openverse license code (cc0, pdm, by, by-sa) to canonical label, or null if disallowed.\nfunction normaliseOpenverseLicence(lic) {\n  if (!lic || typeof lic !== 'string') return null;\n  const l = lic.trim().toLowerCase();\n  if (l === 'cc0') return 'CC0';\n  if (l === 'pdm' || l === 'public domain') return 'Public domain';\n  if (l === 'by') return 'CC BY';\n  if (l === 'by-sa') return 'CC BY-SA';\n  return null;\n}\n\n// Parse an Openverse v1 /images/ result into the normalised candidate schema.\nfunction parseOpenversePage(item) {\n  if (!item || !item.id) return { ok: false, reason: 'invalid item payload' };\n  const licence = normaliseOpenverseLicence(item.license);\n  const mime = item.filetype ? 'image/' + String(item.filetype).toLowerCase().replace(/^jpg$/, 'jpeg') : 'image/jpeg';\n  const rawLicence = item.license\n    ? (licence === 'Public domain' ? 'Public domain' : licence === 'CC0' ? 'CC0' : ('CC ' + String(item.license).toUpperCase() + ' ' + (item.license_version || '')).trim())\n    : '';\n  return {\n    ok: true,\n    pageid: item.id,\n    title: item.title || 'Untitled',\n    pageUrl: item.foreign_landing_url || item.url || '',\n    downloadUrl: item.url || '',\n    originalUrl: item.url || '',\n    thumbnailUrl: item.thumbnail || '',\n    width: item.width || 1200,\n    height: item.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence,\n    licenceRaw: rawLicence,\n    licenseUrl: item.license_url || '',\n    artist: item.creator || 'Unknown author',\n    credit: item.attribution || '',\n    description: (item.title || '') + (Array.isArray(item.tags) ? ' ' + item.tags.map((t) => t.name).filter(Boolean).join(' ') : ''),\n    dateCreated: '',\n    usageTerms: '',\n    sourceProvider: item.source || 'Openverse',\n    tier: 'Tier 2: Openverse',\n  };\n}\n\n// Deterministic attribution string for Openverse candidates.\nfunction buildOpenverseCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || 'Untitled').replace(/\"/g, \"'\");\n  const source = c.sourceProvider || 'Openverse';\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via ' + source + ' (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via ' + source + ' (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via ' + source + ' (' + c.pageUrl + ').';\n}\n\nconst out=[];\nfor (const [i,x] of $input.all().entries()) {\n  const s=$('Save File').itemMatching(i).json;\n  const c=s.chosen;\n  if(!c || (s.result!=='selected' && s.result!=='needs_review' && !s.aiGenerated)) throw new Error('Refusing Asset without a validated candidate');\n  const bytes=await this.helpers.getBinaryDataBuffer(i,'data');\n  if(bytes.length>5000000) throw new Error('Saved file exceeds Airtable direct-upload limit for slide '+s.slide_index);\n  const filename=s.localPath.split('/').pop();\n  const attachmentUpload={contentType:x.binary.data.mimeType,filename,file:bytes.toString('base64')};\n  const storyTitle=($('Get Next Story').first().json.Title||'Story').slice(0,40);\n  out.push({json:{Name:storyTitle+' S'+s.slide_index+' — '+s.subject,Story:[$('Get Next Story').first().json.id],Type:'image','Source URL':c.pageUrl,License:s.aiGenerated?'Custom / AI Generated (WE, HUMANITY)':c.licenceRaw,'AI Generated':Boolean(s.aiGenerated),'Slide Index':s.slide_index,'Slide Type':({object:'context',person:'people',detail:'process'})[s.slide_type]||(['cover','context','problem','process','people','remember'].includes(s.slide_type)?s.slide_type:'context'),Model:s.aiGenerated?'gemini-2.5-flash-image':$('Plan Slides').params.modelId.value,'Generation Prompt':c.foundQuery,Credit:s.aiGenerated?'Visual synthesis via Gemini Flash Image (WE, HUMANITY)':buildCredit(c),'Selection Reason':s.aiGenerated?'Tier 3 AI fallback: no approved Commons/Openverse photo found.':s.reason,Confidence:s.confidence,localPath:s.localPath,attachmentUpload},pairedItem:{item:i}});\n}\nreturn out;"
+        },
+        "name": "Build Assets Record",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4736,
+          256
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_BASE_ID"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_TABLE_ID"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Name": "={{ $json[\"Name\"] }}",
+              "Story": "={{ $json[\"Story\"] }}",
+              "Type": "={{ $json[\"Type\"] }}",
+              "Source URL": "={{ $json[\"Source URL\"] }}",
+              "License": "={{ $json[\"License\"] }}",
+              "AI Generated": "={{ $json[\"AI Generated\"] }}",
+              "Slide Index": "={{ $json[\"Slide Index\"] }}",
+              "Slide Type": "={{ $json[\"Slide Type\"] }}",
+              "Model": "={{ $json[\"Model\"] }}",
+              "Generation Prompt": "={{ $json[\"Generation Prompt\"] }}",
+              "Credit": "={{ $json[\"Credit\"] }}",
+              "Selection Reason": "={{ $json[\"Selection Reason\"] }}",
+              "Confidence": "={{ $json[\"Confidence\"] }}"
+            },
+            "schema": [
+              {
+                "displayName": "Name",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Story",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "array",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Type",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Source URL",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "License",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "AI Generated",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "boolean",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Slide Index",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Slide Type",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Model",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Generation Prompt",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Credit",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Selection Reason",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Confidence",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "name": "Create Asset",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          4960,
+          256
+        ],
+        "disabled": false,
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "parameters": {
+          "options": {},
+          "batchSize": 3
+        },
+        "name": "Loop Commons Searches",
+        "type": "n8n-nodes-base.splitInBatches",
+        "typeVersion": 3,
+        "position": [
+          1472,
+          80
+        ]
+      },
+      {
+        "parameters": {
+          "amount": 0.5
+        },
+        "name": "Pace Commons Searches",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          1920,
+          64
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ Array.isArray($json.candidates) && $json.candidates.length > 0 }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "name": "Has Candidates",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1920,
+          256
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "return $input.all().map((x,i)=>({json:{...x.json,chosen:null,confidence:'low',reason:'No licensed matching image candidates were found.',result:'no_candidates'},pairedItem:{item:i}}));"
+        },
+        "name": "No Candidates",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2496,
+          272
+        ]
+      },
+      {
+        "parameters": {},
+        "name": "Collect Choices",
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          2720,
+          256
+        ]
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "name": "Loop Image Downloads",
+        "type": "n8n-nodes-base.splitInBatches",
+        "typeVersion": 3,
+        "position": [
+          3840,
+          256
+        ]
+      },
+      {
+        "parameters": {
+          "amount": 0.5
+        },
+        "name": "Pace Image Downloads",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          5632,
+          64
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "return $input.all().map((x,i)=>{\n const src=$('Loop Image Downloads').itemMatching(i).json;\n const error=x.json.error;\n const message=typeof error==='string'?error:(error?.message||x.json.message||'Unknown image error');\n return {json:{...src,imageFailed:true,failureLine:'image failed: '+src.slide_index+' '+message},pairedItem:{item:i}};\n});"
+        },
+        "name": "Capture Image Failure",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4512,
+          32
+        ]
+      },
+      {
+        "parameters": {
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_BASE_ID"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_TABLE_ID"
+          },
+          "options": {}
+        },
+        "name": "Read Story for Image Failure",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          4736,
+          32
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "parameters": {
+          "jsCode": "return $input.all().map((x,i)=>{\n const s=x.json;\n const line=$('Capture Image Failure').itemMatching(i).json.failureLine;\n const flags=String(s.Flags||'');\n const notes=String(s['Reviewer Notes']||'');\n const nextFlags=flags.split(';').map(x=>x.trim()).includes(line)?flags:(flags?flags+'; ':'')+line;\n const nextNotes=notes.split('\\n').includes(line)?notes:(notes?notes+'\\n\\n':'')+line;\n return {json:{id:s.id,Flags:nextFlags,'Reviewer Notes':nextNotes},pairedItem:{item:i}};\n});"
+        },
+        "name": "Append Image Failure",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4960,
+          32
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "update",
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_BASE_ID"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_TABLE_ID"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Flags": "={{ $json.Flags }}",
+              "Reviewer Notes": "={{ $json['Reviewer Notes'] }}"
+            },
+            "matchingColumns": [
+              "id"
+            ],
+            "schema": [
+              {
+                "displayName": "id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Flags",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Reviewer Notes",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "name": "Record Image Failure",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          5184,
+          32
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "parameters": {
+          "jsCode": "return $input.all().map((x,i)=>({json:{...$('Capture Image Failure').itemMatching(i).json,imageFailed:true},pairedItem:{item:i}}));"
+        },
+        "name": "Resume Image Loop After Failure",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          5408,
+          32
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "return $input.all().flatMap((x,i)=>!x.json.imageFailed&&x.binary?.data?[{json:x.json,binary:x.binary,pairedItem:{item:i}}]:[]);"
+        },
+        "name": "Successful Image Downloads",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4064,
+          256
+        ]
+      },
+      {
+        "parameters": {
+          "fileSelector": "={{ $json.localPath }}",
+          "options": {
+            "dataPropertyName": "data"
+          }
+        },
+        "name": "Read Saved Image",
+        "type": "n8n-nodes-base.readWriteFile",
+        "typeVersion": 1,
+        "position": [
+          4512,
+          256
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'https://content.airtable.com/v0/YOUR_AIRTABLE_BASE_ID/' + $json.id + '/fldGdVdkR0bzAWKOr/uploadAttachment' }}",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "airtableTokenApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $('Build Assets Record').item.json.attachmentUpload }}",
+          "options": {
+            "batching": {
+              "batch": {
+                "batchSize": 3,
+                "batchInterval": 500
+              }
+            },
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            },
+            "timeout": 60000
+          },
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Connection",
+                "value": "close"
+              }
+            ]
+          }
+        },
+        "name": "Upload Saved Asset File",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          5184,
+          256
+        ],
+        "disabled": false,
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "name": "Format Openverse Query",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2368,
+          368
+        ],
+        "parameters": {
+          "jsCode": "const GENERIC = new Set(['detail','details','closeup','close-up','close','view','angle','shot','photo','photograph','image','controls','knobs','tonearm','macro','background','portrait','of','the','and','with','by','for','in','on','a','an']);\nreturn $input.all().map((x, i) => {\n  const s = x.json;\n  const words = String(s.subject || '').replace(/[^a-zA-Z0-9s-]/g, ' ').split(/s+/).filter(w => w.length > 2 && !GENERIC.has(w.toLowerCase()));\n  const openverseQuery = (words.slice(0, 4).join(' ') || String(s.subject || '').slice(0, 60)).trim();\n  return { json: { ...s, openverseQuery }, pairedItem: { item: i } };\n});"
+        }
+      },
+      {
+        "name": "Openverse Search",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2592,
+          368
+        ],
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 3000,
+        "onError": "continueRegularOutput",
+        "parameters": {
+          "url": "=https://api.openverse.org/v1/images/?q={{ encodeURIComponent($json.openverseQuery) }}&license_type=commercial,modification&license=cc0,pdm,by,by-sa&excluded_sources=wikimedia&page_size=15",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "WeHumanity/1.0 (licensed editorial image research; contact: [contact-email])"
+              },
+              {
+                "name": "Connection",
+                "value": "close"
+              }
+            ]
+          },
+          "options": {
+            "batching": {
+              "batch": {
+                "batchSize": 1,
+                "batchInterval": 1000
+              }
+            },
+            "response": {
+              "response": {
+                "responseFormat": "json"
+              }
+            },
+            "timeout": 10000
+          }
+        }
+      },
+      {
+        "name": "Parse Openverse",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2816,
+          368
+        ],
+        "parameters": {
+          "jsCode": "// Deterministic licence filter and Commons response parser for WF3c.\n// Pure functions: no network, no model calls.\n// For n8n: paste the function bodies only. Delete the \"LOCAL TEST ONLY\" line at the bottom.\n\n// Normalise a licence short name from Commons (LicenseShortName / License).\n// Returns the canonical licence label, or null if not allowed.\nfunction normaliseLicence(raw) {\n  if (!raw || typeof raw !== 'string') return null;\n  const s = raw.trim().toLowerCase().replace(/\\s+/g, ' ');\n  if (s === 'public domain' || s.startsWith('pd-') || s === 'pd') return 'Public domain';\n  if (s === 'cc0' || s.startsWith('cc0 ') || s.startsWith('cc0-')) return 'CC0';\n  if (/^cc[ -]by[ -]sa\\b/.test(s) && !/-(nc|nd)\\b/.test(s)) return 'CC BY-SA';\n  if (/^cc[ -]by\\b/.test(s) && !/-(nc|nd|sa)\\b/.test(s)) return 'CC BY';\n  return null;\n}\n\n// Parse a Commons imageinfo API page into a normalised candidate.\nfunction parseCommonsPage(page) {\n  const info = page && page.imageinfo && page.imageinfo[0];\n  if (!info) return { ok: false, reason: 'no imageinfo' };\n  const meta = info.extmetadata || {};\n  const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : '');\n  const stripHtml = (s) => String(s || '').replace(/<[^>]*>/g, '')\n    .replace(/&(amp|quot|apos|nbsp|lt|gt);|&#(x[0-9a-f]+|[0-9]+);/gi, (m, name, code) => {\n      if (name) return {amp:'&',quot:'\"',apos: String.fromCharCode(39),nbsp:' ',lt:'<',gt:'>'}[name.toLowerCase()];\n      const n = code[0].toLowerCase() === 'x' ? parseInt(code.slice(1),16) : parseInt(code,10);\n      return n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;\n    }).replace(/\\s+/g, ' ').trim();\n  const licenceRaw = val('LicenseShortName') || val('License');\n  const mime = info.mime || '';\n  return {\n    ok: true,\n    pageid: page.pageid,\n    title: page.title || '',\n    pageUrl: info.descriptionurl || '',\n    downloadUrl: info.thumburl || info.url || '',\n    originalUrl: info.url || '',\n    width: info.width || null,\n    height: info.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence: normaliseLicence(licenceRaw),\n    licenceRaw,\n    licenseUrl: val('LicenseUrl'),\n    artist: stripHtml(val('Artist')),\n    credit: stripHtml(val('Credit')),\n    description: stripHtml(val('ImageDescription')),\n    dateCreated: stripHtml(val('DateTimeOriginal') || val('DateTime') || ''),\n    usageTerms: stripHtml(val('UsageTerms')),\n  };\n}\n\n// Decide whether a candidate is acceptable under the project's rules.\nfunction filterCandidate(c) {\n  const reasons = [];\n  if (!c || !c.ok) reasons.push('unparseable');\n  else {\n    if (!c.isImage) reasons.push('not a supported image type: ' + c.mime);\n    if (!c.licence) reasons.push('licence not allowed: ' + (c.licenceRaw || 'unknown'));\n    if (!c.pageUrl) reasons.push('missing source page URL');\n    if (!c.downloadUrl) reasons.push('missing download URL');\n    if (c.width && c.width < 800) reasons.push('too small (' + c.width + 'px wide)');\n    if (c.height && c.height < 600) reasons.push('too short (' + c.height + 'px tall)');\n    if (c.width && c.height) {\n      const aspect = c.width / c.height;\n      if (aspect > 2.2 || aspect < 0.35) reasons.push('extreme aspect ratio (' + c.width + 'x' + c.height + ')');\n    }\n  }\n  return { pass: reasons.length === 0, reasons };\n}\n\n// Filter and rank candidates without slide context. CC0/PD first, then CC BY, then CC BY-SA; wider first within a tier.\nfunction filterAndRank(candidates) {\n  const rank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  return candidates\n    .map((c) => ({ c, f: filterCandidate(c) }))\n    .filter((x) => x.f.pass)\n    .sort((a, b) => (rank[a.c.licence] - rank[b.c.licence]) || ((b.c.width || 0) - (a.c.width || 0)))\n    .map((x) => x.c);\n}\n\nconst STOP_WORDS = new Set(['the','and','of','for','with','by','designed','a','an','in','on','at','from','to','its','his','her','their']);\n\n// Extract search/subject tokens from a slide object for relevance scoring.\nfunction slideTokens(slide) {\n  const text = [(slide && slide.subject) || '', ...((slide && slide.search_queries) || [])].join(' ').toLowerCase();\n  const out = new Set();\n  for (const w of text.split(/[^a-z0-9]+/).filter(Boolean)) {\n    if (w.length >= 3 && !STOP_WORDS.has(w)) out.add(w);\n    else if (/[a-z]/.test(w) && /[0-9]/.test(w)) out.add(w);\n  }\n  return [...out];\n}\n\n// Count how many slide tokens match a candidate's title + description.\n// Plain words require whole-word match (so 'braun' does not match 'Braunerova');\n// digit-containing tokens match in the squashed string (so 'sk4' matches 'SK 4').\nfunction relevance(c, tokens) {\n  const text = (c.title || '') + ' ' + (c.description || '');\n  const words = new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));\n  const hay = text.toLowerCase().replace(/[^a-z0-9]+/g, '');\n  let n = 0;\n  for (const t of tokens) {\n    if (/[0-9]/.test(t)) { if (hay.includes(t)) n++; }\n    else if (words.has(t)) n++;\n  }\n  return n;\n}\n\n// Filter and rank candidates for a slide: relevance hits first, then width, then licence tier.\n// Drops zero-hit candidates when at least one candidate has a hit.\nfunction rankForSlide(candidates, tokens) {\n  const licenceRank = { 'CC0': 0, 'Public domain': 0, 'CC BY': 1, 'CC BY-SA': 2 };\n  const passed = candidates.filter((c) => filterCandidate(c).pass);\n  const scored = passed.map((c) => ({ c, hits: relevance(c, tokens) }));\n  const best = scored.reduce((m, x) => Math.max(m, x.hits), 0);\n  const keep = best > 0 ? scored.filter((x) => x.hits > 0) : scored;\n  return keep\n    .sort((a, b) => (b.hits - a.hits)\n      || ((b.c.width || 0) - (a.c.width || 0))\n      || (licenceRank[a.c.licence] - licenceRank[b.c.licence]))\n    .map((x) => x.c);\n}\n\n// Full attribution string. CC BY / CC BY-SA need: title, author, licence name + link,\n// source page, and an indication of changes. Store in Assets Credit and show on the slide.\n// Deterministic; never generated by the model.\nfunction buildCredit(c) {\n  if (!c) return '';\n  if (c.tier === 'Tier 2: Openverse' || (c.sourceProvider && c.sourceProvider !== 'Wikimedia Commons')) {\n    return buildOpenverseCredit(c);\n  }\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || '').replace(/^File:/, '').replace(/_/g, ' ');\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via Wikimedia Commons (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via Wikimedia Commons (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via Wikimedia Commons (' + c.pageUrl + ').';\n}\n\n// Normalise an Openverse license code (cc0, pdm, by, by-sa) to canonical label, or null if disallowed.\nfunction normaliseOpenverseLicence(lic) {\n  if (!lic || typeof lic !== 'string') return null;\n  const l = lic.trim().toLowerCase();\n  if (l === 'cc0') return 'CC0';\n  if (l === 'pdm' || l === 'public domain') return 'Public domain';\n  if (l === 'by') return 'CC BY';\n  if (l === 'by-sa') return 'CC BY-SA';\n  return null;\n}\n\n// Parse an Openverse v1 /images/ result into the normalised candidate schema.\nfunction parseOpenversePage(item) {\n  if (!item || !item.id) return { ok: false, reason: 'invalid item payload' };\n  const licence = normaliseOpenverseLicence(item.license);\n  const mime = item.filetype ? 'image/' + String(item.filetype).toLowerCase().replace(/^jpg$/, 'jpeg') : 'image/jpeg';\n  const rawLicence = item.license\n    ? (licence === 'Public domain' ? 'Public domain' : licence === 'CC0' ? 'CC0' : ('CC ' + String(item.license).toUpperCase() + ' ' + (item.license_version || '')).trim())\n    : '';\n  return {\n    ok: true,\n    pageid: item.id,\n    title: item.title || 'Untitled',\n    pageUrl: item.foreign_landing_url || item.url || '',\n    downloadUrl: item.url || '',\n    originalUrl: item.url || '',\n    thumbnailUrl: item.thumbnail || '',\n    width: item.width || 1200,\n    height: item.height || null,\n    mime,\n    isImage: /^image\\/(jpeg|png|tiff|webp)$/.test(mime),\n    licence,\n    licenceRaw: rawLicence,\n    licenseUrl: item.license_url || '',\n    artist: item.creator || 'Unknown author',\n    credit: item.attribution || '',\n    description: (item.title || '') + (Array.isArray(item.tags) ? ' ' + item.tags.map((t) => t.name).filter(Boolean).join(' ') : ''),\n    dateCreated: '',\n    usageTerms: '',\n    sourceProvider: item.source || 'Openverse',\n    tier: 'Tier 2: Openverse',\n  };\n}\n\n// Deterministic attribution string for Openverse candidates.\nfunction buildOpenverseCredit(c) {\n  if (!c) return '';\n  const artist = c.artist && c.artist !== 'Unknown' ? c.artist : 'Unknown author';\n  const title = (c.title || 'Untitled').replace(/\"/g, \"'\");\n  const source = c.sourceProvider || 'Openverse';\n  if (c.licence === 'CC BY' || c.licence === 'CC BY-SA') {\n    const link = c.licenseUrl ? ' (' + c.licenseUrl + ')' : '';\n    return '\"' + title + '\" by ' + artist + ' via ' + source + ' (' + c.pageUrl + '), licensed under ' + (c.licenceRaw || c.licence) + link + '. Cropped and resized; no other changes.';\n  }\n  if (c.licence === 'CC0') {\n    return '\"' + title + '\" by ' + artist + ', CC0 (public domain dedication), via ' + source + ' (' + c.pageUrl + ').';\n  }\n  return '\"' + title + '\" by ' + artist + ', public domain, via ' + source + ' (' + c.pageUrl + ').';\n}\n\nreturn $input.all().map((x, i) => {\n  const slide = $('Format Openverse Query').itemMatching(i).json;\n  const results = Array.isArray(x.json && x.json.results) ? x.json.results : [];\n  const usable = results\n    .map((r) => ({ ...parseOpenversePage(r), foundQuery: slide.openverseQuery }))\n    .filter((c) => c.ok && c.downloadUrl && c.pageUrl && filterCandidate(c).pass);\n  const candidates = rankForSlide(usable, slideTokens(slide)).slice(0, 5);\n  return { json: { ...slide, candidates, fallbackTier: 'Tier 2: Openverse' }, pairedItem: { item: i } };\n});"
+        }
+      },
+      {
+        "name": "Has Openverse Candidates",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          3040,
+          368
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.candidates.length }}",
+                "rightValue": 0,
+                "operator": {
+                  "type": "number",
+                  "operation": "gt"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "name": "Build AI Fallback Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3264,
+          464
+        ],
+        "parameters": {
+          "jsCode": "return $input.all().map((x, i) => {\n  const s = x.json;\n  const aiFallbackPrompt = [\n    'Bright, well-lit archival museum or studio documentary photograph of ' + (s.subject || 'historical or digital design artifact') + '.',\n    'Even mid-tone studio and natural daylight fill, lifted shadow detail, warm light-stone museum or clean archival desk backdrop, high surface clarity so material textures, hardware surfaces, typography, and structural details remain clearly visible.',\n    'Shot on medium format camera, 80mm lens, f/8 aperture, razor-sharp optical focus, natural fine film grain.',\n    'Avoid dark, low-key, silhouetted, or underexposed lighting. No overlaid text, no watermarks, no CGI render look.'\n  ].join(' ');\n  return { json: { ...s, aiFallbackPrompt, fallbackTier: 'Tier 3: AI Prompt Ready' }, pairedItem: { item: i } };\n});"
+        }
+      },
+      {
+        "name": "Execute Workflow Trigger",
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          0,
+          256
+        ],
+        "parameters": {
+          "inputSource": "passthrough"
+        }
+      },
+      {
+        "name": "Aggregate Uploaded Story",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          5408,
+          256
+        ],
+        "parameters": {
+          "jsCode": "return [{ json: { storyId: $('Get Next Story').first().json.id, uploadedCount: $input.all().length } }];"
+        }
+      },
+      {
+        "name": "Trigger WF4 Render",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": [
+          5632,
+          256
+        ],
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "eSrdqP9mk6hg6Xls"
+          },
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        }
+      },
+      {
+        "name": "Story Needs Images?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          336,
+          80
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ !Array.isArray($json.Assets) || $json.Assets.length < 6 }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "name": "Pass Existing Story to WF4",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          5408,
+          464
+        ],
+        "parameters": {
+          "jsCode": "return [{ json: { storyId: $('Get Next Story').first().json.id, skippedExistingAssets: true } }];"
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ !$json.chosen?.downloadUrl && !!$json.aiFallbackPrompt }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "name": "Needs AI Generation?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          4060,
+          396
+        ]
+      },
+      {
+        "parameters": {
+          "resource": "image",
+          "operation": "generate",
+          "modelId": {
+            "__rl": true,
+            "value": "models/gemini-2.5-flash-image",
+            "mode": "list",
+            "cachedResultName": "models/gemini-2.5-flash-image"
+          },
+          "prompt": "={{ $json.aiFallbackPrompt }}",
+          "options": {
+            "binaryPropertyOutput": "data"
+          }
+        },
+        "name": "Generate AI Image",
+        "type": "@n8n/n8n-nodes-langchain.googleGemini",
+        "typeVersion": 1.1,
+        "position": [
+          4280,
+          536
+        ],
+        "retryOnFail": true,
+        "maxTries": 4,
+        "waitBetweenTries": 3000,
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const out = [];\nfor (const [i, x] of $input.all().entries()) {\n  const m = $('Needs AI Generation?').itemMatching(i).json;\n  if (!x.binary?.data) throw new Error('No binary image returned for slide ' + m.slide_index);\n  const ext = x.binary.data.fileExtension || (String(x.binary.data.mimeType || '').includes('jpeg') ? 'jpg' : 'png');\n  const storyId = $('Get Next Story').first().json.id;\n  const localPath = `WE_HUMANITY_ROOT/assets/${storyId}_slide_${m.slide_index}.${ext}`;\n  out.push({\n    json: {\n      ...m,\n      aiGenerated: true,\n      result: 'ai_generated',\n      confidence: 'medium',\n      chosen: {\n        pageUrl: `urn:ai:gemini-2.5-flash-image:${storyId}-slide-${m.slide_index}`,\n        licenceRaw: 'Custom / AI Generated (WE, HUMANITY)',\n        foundQuery: m.aiFallbackPrompt\n      },\n      localPath\n    },\n    binary: x.binary,\n    pairedItem: { item: i }\n  });\n}\nreturn out;"
+        },
+        "name": "Normalize AI Image",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4500,
+          536
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const slides = $input.all().map(x => x.json);\nif (slides.length === 0) return [];\nconst compactSlides = slides.map(s => ({\n  slide_index: s.slide_index,\n  subject: s.subject,\n  candidates: (s.candidates || []).map(c => ({\n    pageid: c.pageid,\n    title: c.title,\n    description: String(c.description || '').slice(0, 140),\n    width: c.width || null\n  }))\n}));\nreturn [{ json: { slides, compactSlides }, pairedItem: { item: 0 } }];"
+        },
+        "name": "Prepare Batch Choice",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1924,
+          80
+        ]
+      }
+    ],
+    "connections": {
+      "Manual Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get Next Story",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Planning Prompt": {
+        "main": [
+          [
+            {
+              "node": "Plan Slides",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Plan Slides": {
+        "main": [
+          [
+            {
+              "node": "Validate Plan",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Validate Plan": {
+        "main": [
+          [
+            {
+              "node": "Expand Queries",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Expand Queries": {
+        "main": [
+          [
+            {
+              "node": "Loop Commons Searches",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Commons Search": {
+        "main": [
+          [
+            {
+              "node": "Pace Commons Searches",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse and Filter": {
+        "main": [
+          [
+            {
+              "node": "Has Candidates",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Choose Candidate": {
+        "main": [
+          [
+            {
+              "node": "Apply Choice",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Apply Choice": {
+        "main": [
+          [
+            {
+              "node": "Collect Choices",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Read Current Story": {
+        "main": [
+          [
+            {
+              "node": "Summarize Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Summarize Research": {
+        "main": [
+          [
+            {
+              "node": "Record Research Review",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Record Research Review": {
+        "main": [
+          [
+            {
+              "node": "Selected Photos",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Selected Photos": {
+        "main": [
+          [
+            {
+              "node": "Loop Image Downloads",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Download Image": {
+        "main": [
+          [
+            {
+              "node": "Verify Image",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Capture Image Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verify Image": {
+        "main": [
+          [
+            {
+              "node": "Pace Image Downloads",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Capture Image Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Save File": {
+        "main": [
+          [
+            {
+              "node": "Read Saved Image",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Assets Record": {
+        "main": [
+          [
+            {
+              "node": "Create Asset",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Loop Commons Searches": {
+        "main": [
+          [
+            {
+              "node": "Parse and Filter",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Commons Search",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pace Commons Searches": {
+        "main": [
+          [
+            {
+              "node": "Loop Commons Searches",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Candidates": {
+        "main": [
+          [
+            {
+              "node": "Prepare Batch Choice",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Format Openverse Query",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "No Candidates": {
+        "main": [
+          [
+            {
+              "node": "Collect Choices",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Collect Choices": {
+        "main": [
+          [
+            {
+              "node": "Read Current Story",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Loop Image Downloads": {
+        "main": [
+          [
+            {
+              "node": "Successful Image Downloads",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Needs AI Generation?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pace Image Downloads": {
+        "main": [
+          [
+            {
+              "node": "Loop Image Downloads",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Capture Image Failure": {
+        "main": [
+          [
+            {
+              "node": "Read Story for Image Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Read Story for Image Failure": {
+        "main": [
+          [
+            {
+              "node": "Append Image Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Append Image Failure": {
+        "main": [
+          [
+            {
+              "node": "Record Image Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Record Image Failure": {
+        "main": [
+          [
+            {
+              "node": "Resume Image Loop After Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Resume Image Loop After Failure": {
+        "main": [
+          [
+            {
+              "node": "Pace Image Downloads",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Successful Image Downloads": {
+        "main": [
+          [
+            {
+              "node": "Save File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Read Saved Image": {
+        "main": [
+          [
+            {
+              "node": "Build Assets Record",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Create Asset": {
+        "main": [
+          [
+            {
+              "node": "Upload Saved Asset File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Openverse Query": {
+        "main": [
+          [
+            {
+              "node": "Openverse Search",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Openverse Search": {
+        "main": [
+          [
+            {
+              "node": "Parse Openverse",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Openverse": {
+        "main": [
+          [
+            {
+              "node": "Has Openverse Candidates",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Openverse Candidates": {
+        "main": [
+          [
+            {
+              "node": "Prepare Batch Choice",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Build AI Fallback Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build AI Fallback Prompt": {
+        "main": [
+          [
+            {
+              "node": "No Candidates",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Next Story": {
+        "main": [
+          [
+            {
+              "node": "Story Needs Images?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get Next Story",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Upload Saved Asset File": {
+        "main": [
+          [
+            {
+              "node": "Aggregate Uploaded Story",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Aggregate Uploaded Story": {
+        "main": [
+          [
+            {
+              "node": "Trigger WF4 Render",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Story Needs Images?": {
+        "main": [
+          [
+            {
+              "node": "Build Planning Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Pass Existing Story to WF4",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pass Existing Story to WF4": {
+        "main": [
+          [
+            {
+              "node": "Trigger WF4 Render",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Needs AI Generation?": {
+        "main": [
+          [
+            {
+              "node": "Generate AI Image",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Download Image",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Generate AI Image": {
+        "main": [
+          [
+            {
+              "node": "Normalize AI Image",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Capture Image Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize AI Image": {
+        "main": [
+          [
+            {
+              "node": "Pace Image Downloads",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Batch Choice": {
+        "main": [
+          [
+            {
+              "node": "Choose Candidate",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false
+    }
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "name": "we-humanity",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A local editorial research and social-carousel studio orchestrated with n8n.",
+  "scripts": {
+    "render-server": "node scripts/render-server.js",
+    "studio": "node app/server.js",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

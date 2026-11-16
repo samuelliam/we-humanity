@@ -1,0 +1,10 @@
+renders/
+assets/
+.DS_Store
+.env
+firebase-service-account.json
+.studio-run-options.json
+.studio-rerender.json
+
+
+

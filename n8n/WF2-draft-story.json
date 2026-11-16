@@ -1,0 +1,672 @@
+[
+  {
+    "name": "WH - WF2 Draft Story (test)",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "days",
+                "daysInterval": 1,
+                "triggerAtHour": 9,
+                "triggerAtMinute": 0
+              }
+            ]
+          }
+        },
+        "name": "Daily Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -480,
+          120
+        ]
+      },
+      {
+        "parameters": {},
+        "name": "Manual Trigger",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          768,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "search",
+          "base": {
+            "__rl": true,
+            "value": "YOUR_AIRTABLE_BASE_ID",
+            "mode": "id"
+          },
+          "table": {
+            "__rl": true,
+            "value": "YOUR_AIRTABLE_TABLE_ID",
+            "mode": "id"
+          },
+          "filterByFormula": "{Status}='queued'",
+          "returnAll": false,
+          "limit": 1,
+          "options": {},
+          "sort": {
+            "property": [
+              {
+                "field": "Priority"
+              }
+            ]
+          }
+        },
+        "name": "Search Backlog",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          992,
+          0
+        ],
+        "alwaysOutputData": true,
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "parameters": {
+          "jsCode": "const s = $json;\nconst system = 'You are the editor of WE, HUMANITY, an independent collection of stories about human creativity, discovery, craftsmanship and design across both physical artifacts and digital/information systems. Voice: vivid, specific, human-centered, reverent but never stuffy—use plain, concrete everyday words (e.g. \"twisting\", \"wave force\", \"flexible joints\", \"pixel grid\") instead of academic jargon (\"torsion\", \"kinetic energy\", \"decoupled structure\"). NARRATIVE ARC: Start with the hard real-world or cognitive constraint, break down the exact physical mechanism or interface decision that solved it, and close with the timeless design takeaway that still shapes how we build today. STRICT ACCURACY RULES: (1) Only state facts supported by documented historical, museum, or archive sources—NEVER invent dramatic scenarios (e.g. \"a single calculation error could throw a city into disarray\"). (2) Always include the essential spine facts: the historical date/century/release year, the maker/designer/team (when known), and the geographic location, museum, archive, or institution holding or originating the work (plus discovery year when archaeological). (3) For any specific figure (draft, dates, dimensions, distances, resolution, fragment counts), explicitly name the specific ship, artifact, interface, or structure it applies to. (4) Distinguish surviving physical/archival evidence from scholarly reconstruction: use hedges like \"researchers believe\", \"likely\", or \"no comparable devices are known for about a thousand years\" instead of absolute claims. (5) Use precise terminology where appropriate (e.g. \"X-ray CT scans\" rather than \"deep X-ray scans\") and credit the research team or decade when citing modern analysis. (6) Keep technical details strictly consistent across all sections. Write four depths: glance (1-2 punchy sentences capturing the hook, hard constraint, year/location, and stakes), explore (2 short paragraphs on the environment, the hard constraint, and why conventional approaches failed), deep_dive (2-3 short paragraphs on the maker, the exact mechanism or interface decision, and how it was tested or verified), remember (1-2 sentences on the timeless design principle that still shapes how we build today, properly hedged). List sources as URLs or citations. Set flags for any of: dates or numbers, quotes or motives attributed to a person, disputed attribution, living people. Return JSON only with keys: glance, explore, deep_dive, remember, sources (array of strings), flags (array of strings).';\nconst user = 'Story: ' + s.Title + '\\nPillar: ' + s.Pillar + '\\nBrief: ' + s.Brief;\nreturn [{json:{id: s.id, Title: s.Title, Pillar: s.Pillar, Brief: s.Brief, prompt: system + '\\n\\n' + user}}];"
+        },
+        "name": "Build Prompt",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1200,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "models/gemini-3.8-flash",
+            "mode": "list",
+            "cachedResultName": "models/gemini-3.8-flash"
+          },
+          "messages": {
+            "values": [
+              {
+                "content": "={{ $json.prompt }}"
+              }
+            ]
+          },
+          "jsonOutput": true,
+          "builtInTools": {
+            "googleSearch": true
+          },
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.googleGemini",
+        "typeVersion": 1.1,
+        "position": [
+          1408,
+          0
+        ],
+        "name": "Message a model",
+        "retryOnFail": true,
+        "maxTries": 4,
+        "waitBetweenTries": 3000
+      },
+      {
+        "parameters": {
+          "jsCode": "const src = $('Build Prompt').first().json;\nconst item = $json;\nlet d;\nif (item.glance && item.deep_dive) {\n  d = item;\n} else {\n  const parts = item?.content?.parts ?? item?.candidates?.[0]?.content?.parts ?? [];\n  let raw = parts.map(p => p.text || '').join('') || item.text || item.output || '';\n  if (!raw) throw new Error('No text found. Keys: ' + Object.keys(item).join(', '));\n  raw = raw.replace(/```json|```/g, '').trim();\n  d = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));\n}\nconst text = [d.glance, d.explore, d.deep_dive, d.remember].join(' ');\nconst flags = new Set(d.flags || []);\nif (/\\d/.test(text)) flags.add('dates or numbers');\nif (text.includes('\"') || text.includes('\\u201C')) flags.add('quote');\nif (/\\b(invented|first|credited|discovered|designed by|pioneered)\\b/i.test(text)) flags.add('attribution');\nreturn [{\n  json: {\n    backlogId: src.id,\n    title: src.Title,\n    pillar: src.Pillar,\n    glance: d.glance,\n    explore: d.explore,\n    deep_dive: d.deep_dive,\n    remember: d.remember,\n    sources: (d.sources || []).join('\\n'),\n    flags: [...flags].join('; '),\n    status: flags.size > 0 ? 'needs_review' : 'drafted'\n  }\n}];"
+        },
+        "name": "Parse and Flag",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2016,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "create",
+          "base": {
+            "__rl": true,
+            "value": "YOUR_AIRTABLE_BASE_ID",
+            "mode": "id"
+          },
+          "table": {
+            "__rl": true,
+            "value": "YOUR_AIRTABLE_TABLE_ID",
+            "mode": "id"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Title": "={{ $json.title }}",
+              "Pillar": "={{ $json.pillar }}",
+              "Status": "={{ $json.status }}",
+              "Glance": "={{ $json.glance }}",
+              "Explore": "={{ $json.explore }}",
+              "Deep Dive": "={{ $json.deep_dive }}",
+              "Remember": "={{ $json.remember }}",
+              "Sources": "={{ $json.sources }}",
+              "Flags": "={{ $json.flags }}",
+              "Backlog": "={{ [$json.backlogId] }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "displayName": "Title",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Pillar",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Glance",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Explore",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Deep Dive",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Remember",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Sources",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Flags",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Backlog",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "array",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "name": "Create Story",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          2240,
+          0
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "parameters": {
+          "operation": "update",
+          "base": {
+            "__rl": true,
+            "value": "YOUR_AIRTABLE_BASE_ID",
+            "mode": "id"
+          },
+          "table": {
+            "__rl": true,
+            "value": "YOUR_AIRTABLE_TABLE_ID",
+            "mode": "id"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "Status": "used"
+            },
+            "matchingColumns": [
+              "id"
+            ],
+            "schema": [
+              {
+                "displayName": "id",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              },
+              {
+                "displayName": "Status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "name": "Mark Backlog Used",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          2464,
+          0
+        ],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000
+      },
+      {
+        "name": "Pass Story ID to WF3c",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2240,
+          0
+        ],
+        "parameters": {
+          "jsCode": "return [{ json: { storyId: $('Create Story').first().json.id } }];"
+        }
+      },
+      {
+        "name": "Trigger WF3c Image Research",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": [
+          2464,
+          0
+        ],
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "Bnv0SFCD8oerXXhs"
+          },
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        }
+      },
+      {
+        "name": "Has Backlog Item",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1088,
+          0
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ Boolean($json.id) }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "name": "Trigger WF1 Research",
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": [
+          1200,
+          192
+        ],
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "WHWF1ResearchStory1"
+          },
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        }
+      },
+      {
+        "name": "Check Existing Story",
+        "type": "n8n-nodes-base.airtable",
+        "typeVersion": 2.1,
+        "position": [
+          1328,
+          0
+        ],
+        "alwaysOutputData": true,
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 2000,
+        "parameters": {
+          "authentication": "airtableTokenApi",
+          "resource": "record",
+          "operation": "search",
+          "base": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_BASE_ID"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "id",
+            "value": "YOUR_AIRTABLE_TABLE_ID"
+          },
+          "filterByFormula": "={{ \"LOWER({Title})=LOWER('\" + String($json.Title || '').replace(/'/g, \"\\\\'\") + \"')\" }}",
+          "returnAll": false,
+          "limit": 1,
+          "options": {
+            "fields": [
+              "Title"
+            ]
+          }
+        }
+      },
+      {
+        "name": "Story Exists?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1488,
+          0
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ Boolean($json.id) }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        }
+      },
+      {
+        "name": "Reuse Existing Story",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1680,
+          192
+        ],
+        "parameters": {
+          "jsCode": "return [{ json: { storyId: $json.id, reusedExisting: true } }];"
+        }
+      },
+      {
+        "name": "Prepare Story Input",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1680,
+          0
+        ],
+        "parameters": {
+          "jsCode": "let src = null;\ntry {\n  const item = $('Search Backlog').first();\n  if (item?.json?.id) src = item.json;\n} catch {}\nif (!src) {\n  try {\n    const item = $('Trigger WF1 Research').first();\n    if (item?.json?.id) src = item.json;\n  } catch {}\n}\nif (!src) throw new Error('No backlog item available from Search Backlog or Trigger WF1 Research');\nreturn [{ json: src }];"
+        }
+      }
+    ],
+    "connections": {
+      "Manual Trigger": {
+        "main": [
+          [
+            {
+              "node": "Search Backlog",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Search Backlog": {
+        "main": [
+          [
+            {
+              "node": "Has Backlog Item",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Prompt": {
+        "main": [
+          [
+            {
+              "node": "Message a model",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Message a model": {
+        "main": [
+          [
+            {
+              "node": "Parse and Flag",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse and Flag": {
+        "main": [
+          [
+            {
+              "node": "Create Story",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Create Story": {
+        "main": [
+          [
+            {
+              "node": "Mark Backlog Used",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mark Backlog Used": {
+        "main": [
+          [
+            {
+              "node": "Pass Story ID to WF3c",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pass Story ID to WF3c": {
+        "main": [
+          [
+            {
+              "node": "Trigger WF3c Image Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Backlog Item": {
+        "main": [
+          [
+            {
+              "node": "Check Existing Story",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Trigger WF1 Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Trigger WF1 Research": {
+        "main": [
+          [
+            {
+              "node": "Check Existing Story",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Check Existing Story": {
+        "main": [
+          [
+            {
+              "node": "Story Exists?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Story Exists?": {
+        "main": [
+          [
+            {
+              "node": "Reuse Existing Story",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Prepare Story Input",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Story Input": {
+        "main": [
+          [
+            {
+              "node": "Build Prompt",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Reuse Existing Story": {
+        "main": [
+          [
+            {
+              "node": "Trigger WF3c Image Research",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Daily Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Search Backlog",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false
+    }
+  }
+]

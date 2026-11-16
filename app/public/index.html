@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WE, HUMANITY — Content Studio</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23171715'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' fill='%23f6f4ef' font-family='Georgia,serif' font-weight='700' font-size='26'%3EWH%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="studio-shell">
+    <header class="studio-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">WH</span>
+        <div>
+          <h1>WE, HUMANITY Studio</h1>
+          <p class="subtitle">Preview generated carousels &amp; trigger n8n workflows</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button type="button" id="refresh-btn" class="btn btn-secondary">Refresh</button>
+      </div>
+    </header>
+
+    <aside class="studio-sidebar" aria-label="Pipeline and stories">
+      <section class="panel-card" aria-labelledby="workflows-heading">
+        <div class="section-head">
+          <h2 id="workflows-heading">Pipeline</h2>
+          <span class="badge" id="pipeline-status-badge">Idle</span>
+        </div>
+        <div class="pipeline-controls">
+          <label class="control-field">
+            <span>Sub-theme</span>
+            <select id="subtheme-select">
+              <option value="">Auto-rotate (all 4 themes)</option>
+              <option value="Physical Craft &amp; Vessels">Physical Craft &amp; Vessels</option>
+              <option value="Architecture &amp; Infrastructure">Architecture &amp; Infrastructure</option>
+              <option value="Scientific Instruments &amp; Mapping">Scientific Instruments &amp; Mapping</option>
+              <option value="Digital Interfaces &amp; Information Design">Digital Interfaces &amp; Information Design</option>
+            </select>
+          </label>
+          <label class="control-field">
+            <span>Custom topic (optional)</span>
+            <input type="text" id="custom-subject-input" placeholder="e.g. Susan Kare Macintosh Icons">
+          </label>
+        </div>
+        <div class="pipeline-actions">
+          <button type="button" id="run-pipeline-btn" class="btn btn-primary btn-block">Generate Story &amp; Carousel</button>
+          <button type="button" id="stop-pipeline-btn" class="btn btn-danger" hidden>Stop Run</button>
+        </div>
+        <div class="pipeline-progress" id="pipeline-progress">
+          <progress id="pipeline-bar" max="4" value="0" aria-label="Pipeline progress"></progress>
+          <p class="pipeline-summary" id="pipeline-summary">Ready to run WF2 → WF3c → WF4.</p>
+          <details class="pipeline-error-details" id="pipeline-error-details" hidden>
+            <summary>Show error details</summary>
+            <pre class="pipeline-error-log" id="pipeline-error-log"></pre>
+          </details>
+          <ol class="stage-list" id="stage-list"></ol>
+        </div>
+      </section>
+
+      <section class="panel-card" aria-labelledby="stories-heading">
+        <div class="section-head">
+          <h2 id="stories-heading">Generated Stories</h2>
+          <span class="count-pill" id="story-count">0</span>
+        </div>
+        <ul class="story-list" id="story-list"></ul>
+      </section>
+    </aside>
+
+    <main class="studio-main" id="main-stage">
+      <div class="empty-state" id="empty-state" hidden>
+        <h2>No rendered carousels yet</h2>
+        <p>Run <strong>WF4</strong> from the Workflows panel to render 1080×1350 PNG slides and captions.</p>
+      </div>
+
+      <div id="preview-container" hidden>
+        <div class="story-meta-bar">
+          <div>
+            <span class="pillar-tag" id="story-pillar"></span>
+            <h2 class="story-title" id="story-title"></h2>
+            <p class="story-submeta" id="story-submeta"></p>
+          </div>
+          <div class="story-meta-actions">
+            <button type="button" id="approve-story-btn" class="btn btn-secondary">Approve</button>
+            <button type="button" id="publish-ig-btn" class="btn btn-primary">Publish to IG</button>
+            <a id="export-zip-btn" class="btn btn-secondary" href="#" download>Download .zip</a>
+            <button type="button" id="rerender-btn" class="btn btn-secondary" title="Re-run WF4 Designer AI &amp; slide renderer for this story">Re-style Carousel</button>
+            <button type="button" id="delete-story-btn" class="btn btn-danger" title="Delete rendered slides for this story">Delete</button>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tablist" focusgroup="tablist nomemory" aria-label="Social platform previews">
+            <button type="button" id="tab-ig" role="tab" aria-selected="true" focusgroupstart>Instagram</button>
+            <button type="button" id="tab-li" role="tab" aria-selected="false">LinkedIn</button>
+            <button type="button" id="tab-x" role="tab" aria-selected="false">X Thread</button>
+          </div>
+
+          <div class="tabpanels-stack">
+            <div role="tabpanel" aria-labelledby="tab-ig" tabindex="0">
+              <div class="panel-body preview-grid">
+                <article class="ig-card" aria-label="Instagram post preview">
+                  <div class="ig-card-header">
+                    <div class="avatar" aria-hidden="true">WH</div>
+                    <div class="ig-handle">
+                      <strong>by.wehumanity</strong>
+                      <span id="ig-pillar-sub">Design &amp; Engineering</span>
+                    </div>
+                    <div class="ig-header-actions">
+                      <span class="slide-counter-pill" id="ig-slide-counter" aria-hidden="true">1 / 1</span>
+                      <button type="button" class="btn btn-icon" id="ig-fullscreen-btn" aria-label="View slides in full screen" title="Full screen">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/>
+                        </svg>
+                        <span>Full screen</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <section class="carousel" aria-roledescription="carousel" aria-label="Instagram carousel slides">
+                    <div class="carousel-controls">
+                      <button type="button" class="carousel-btn" data-direction="previous" aria-label="Previous slide">&#8249;</button>
+                      <button type="button" class="carousel-btn" data-direction="next" aria-label="Next slide">&#8250;</button>
+                    </div>
+                    <div class="carousel-track" id="ig-carousel-track" tabindex="0" role="group" aria-label="Slides"></div>
+                    <p class="visually-hidden" role="status" aria-live="polite" id="ig-carousel-status"></p>
+                    <nav class="carousel-markers" id="ig-carousel-markers" aria-label="Choose a slide"></nav>
+                  </section>
+
+                  <div class="ig-caption-wrap">
+                    <div class="caption-toolbar">
+                      <span class="caption-label">Instagram Caption</span>
+                      <span class="copy">
+                        <button type="button" class="copy-button" command="--copy" commandfor="ig-caption" aria-label="Copy Instagram caption">
+                          <span aria-hidden="true">Copy</span>
+                        </button>
+                        <span class="tip" role="status"></span>
+                      </span>
+                    </div>
+                    <pre class="caption-text" id="ig-caption"></pre>
+                  </div>
+                </article>
+
+                <aside class="inspector-card" aria-label="Rendered assets">
+                  <h3>Rendered Slides (1080×1350)</h3>
+                  <ul class="slide-files-list" id="slide-files-list"></ul>
+                  <h3>Recommended IG Music</h3>
+                  <ul class="music-list" id="music-list"></ul>
+                  <h3>Image Credits</h3>
+                  <ul class="credits-list" id="credits-list"></ul>
+                </aside>
+              </div>
+            </div>
+
+            <div role="tabpanel" aria-labelledby="tab-li" hidden="until-found">
+              <div class="panel-body">
+                <article class="social-doc-card" aria-label="LinkedIn post preview">
+                  <div class="caption-toolbar">
+                    <h3>LinkedIn Carousel Post</h3>
+                    <span class="copy">
+                      <button type="button" class="copy-button" command="--copy" commandfor="li-caption" aria-label="Copy LinkedIn caption">
+                        <span aria-hidden="true">Copy</span>
+                      </button>
+                      <span class="tip" role="status"></span>
+                    </span>
+                  </div>
+                  <pre class="caption-text" id="li-caption"></pre>
+                  <div class="thumb-strip" id="li-thumb-strip"></div>
+                </article>
+              </div>
+            </div>
+
+            <div role="tabpanel" aria-labelledby="tab-x" hidden="until-found">
+              <div class="panel-body">
+                <article class="social-doc-card" aria-label="X thread preview">
+                  <div class="x-post">
+                    <div class="caption-toolbar">
+                      <h3>Post 1 / 2</h3>
+                      <span class="copy">
+                        <button type="button" class="copy-button" command="--copy" commandfor="x-post-1" aria-label="Copy X post 1">
+                          <span aria-hidden="true">Copy</span>
+                        </button>
+                        <span class="tip" role="status"></span>
+                      </span>
+                    </div>
+                    <pre class="caption-text" id="x-post-1"></pre>
+                  </div>
+                  <div class="x-post">
+                    <div class="caption-toolbar">
+                      <h3>Post 2 / 2</h3>
+                      <span class="copy">
+                        <button type="button" class="copy-button" command="--copy" commandfor="x-post-2" aria-label="Copy X post 2">
+                          <span aria-hidden="true">Copy</span>
+                        </button>
+                        <span class="tip" role="status"></span>
+                      </span>
+                    </div>
+                    <pre class="caption-text" id="x-post-2"></pre>
+                  </div>
+                  <div class="thumb-strip" id="x-thumb-strip"></div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <dialog class="lightbox-dialog" id="slide-lightbox" aria-label="Slide preview">
+    <div class="lightbox-bar">
+      <span class="lightbox-title" id="lightbox-title">Slide 1</span>
+      <div class="lightbox-actions">
+        <button type="button" class="btn btn-secondary" id="lightbox-native-fs">True Fullscreen</button>
+        <a class="btn btn-secondary" id="lightbox-download" href="#" download>Download PNG</a>
+        <button type="button" class="btn btn-secondary" id="lightbox-close" aria-label="Close preview">Close</button>
+      </div>
+    </div>
+    <div class="lightbox-stage">
+      <button type="button" class="carousel-btn lightbox-nav" id="lightbox-prev" aria-label="Previous slide">&#8249;</button>
+      <img id="lightbox-img" src="" alt="">
+      <button type="button" class="carousel-btn lightbox-nav" id="lightbox-next" aria-label="Next slide">&#8250;</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
+
