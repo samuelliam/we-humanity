@@ -93,6 +93,7 @@
         <div class="tabs">
           <div class="tablist" focusgroup="tablist nomemory" aria-label="Social platform previews">
             <button type="button" id="tab-ig" role="tab" aria-selected="true" focusgroupstart>Instagram</button>
+            <button type="button" id="tab-flow" role="tab" aria-selected="false">Google Flow Reel</button>
             <button type="button" id="tab-li" role="tab" aria-selected="false">LinkedIn</button>
             <button type="button" id="tab-x" role="tab" aria-selected="false">X Thread</button>
           </div>
@@ -150,6 +151,24 @@
                   <h3>Image Credits</h3>
                   <ul class="credits-list" id="credits-list"></ul>
                 </aside>
+              </div>
+            </div>
+
+            <div role="tabpanel" aria-labelledby="tab-flow" hidden="until-found">
+              <div class="panel-body">
+                <article class="social-doc-card" aria-label="Google Flow Reel guide and prompts">
+                  <div class="flow-guide-banner">
+                    <div>
+                      <h3>Google Flow Reel Guide (9:16 · Veo 3)</h3>
+                      <p class="flow-guide-steps">
+                        1. Open <strong>Google Flow</strong> → set Mode to <strong>Text to Video</strong> (or <strong>Frames to Video</strong>) and Aspect Ratio to <strong>9:16</strong>.<br>
+                        2. Generate one 8–10s clip per scene below and chain them in <strong>Scene Builder</strong> (30–45s total).<br>
+                        3. Record the voiceover lines in Instagram Reels / CapCut, add a track from <strong>Recommended IG Music</strong> at ~15% volume, and paste your Instagram Caption.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="flow-scenes-list" id="flow-scenes-list"></div>
+                </article>
               </div>
             </div>
 

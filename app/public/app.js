@@ -23,6 +23,7 @@ const xPost1El = document.getElementById('x-post-1');
 const xPost2El = document.getElementById('x-post-2');
 const slideFilesListEl = document.getElementById('slide-files-list');
 const musicListEl = document.getElementById('music-list');
+const flowScenesListEl = document.getElementById('flow-scenes-list');
 const creditsListEl = document.getElementById('credits-list');
 const liThumbStripEl = document.getElementById('li-thumb-strip');
 const xThumbStripEl = document.getElementById('x-thumb-strip');
@@ -498,6 +499,7 @@ function renderSelectedStory() {
   markersEl.innerHTML = '';
   slideFilesListEl.innerHTML = '';
   if (musicListEl) musicListEl.innerHTML = '';
+  if (flowScenesListEl) flowScenesListEl.innerHTML = '';
   liThumbStripEl.innerHTML = '';
   xThumbStripEl.innerHTML = '';
 
@@ -579,6 +581,72 @@ function renderSelectedStory() {
       li.appendChild(metaDiv);
       li.appendChild(copyBtn);
       musicListEl.appendChild(li);
+    }
+  }
+
+  if (flowScenesListEl) {
+    const scenes = Array.isArray(story.flowScenes) ? story.flowScenes : [];
+    for (const scene of scenes) {
+      const card = document.createElement('div');
+      card.className = 'flow-scene-card';
+
+      const head = document.createElement('div');
+      head.className = 'flow-scene-head';
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'flow-scene-title';
+      titleSpan.textContent = `Scene ${scene.sceneIndex} · ${scene.label}`;
+      head.appendChild(titleSpan);
+      card.appendChild(head);
+
+      const promptBlock = document.createElement('div');
+      promptBlock.className = 'flow-scene-block';
+      const promptLabelRow = document.createElement('div');
+      promptLabelRow.className = 'flow-scene-label';
+      promptLabelRow.innerHTML = '<span>Google Flow Video Prompt (9:16)</span>';
+      const copyPromptBtn = document.createElement('button');
+      copyPromptBtn.type = 'button';
+      copyPromptBtn.className = 'btn btn-secondary music-copy-btn';
+      copyPromptBtn.textContent = 'Copy Prompt';
+      copyPromptBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(scene.prompt);
+          copyPromptBtn.textContent = 'Copied!';
+          setTimeout(() => { copyPromptBtn.textContent = 'Copy Prompt'; }, 1400);
+        } catch {}
+      });
+      promptLabelRow.appendChild(copyPromptBtn);
+      const promptText = document.createElement('p');
+      promptText.className = 'flow-scene-text';
+      promptText.textContent = scene.prompt;
+      promptBlock.appendChild(promptLabelRow);
+      promptBlock.appendChild(promptText);
+      card.appendChild(promptBlock);
+
+      const narBlock = document.createElement('div');
+      narBlock.className = 'flow-scene-block';
+      const narLabelRow = document.createElement('div');
+      narLabelRow.className = 'flow-scene-label';
+      narLabelRow.innerHTML = '<span>Voiceover / Narration Line</span>';
+      const copyNarBtn = document.createElement('button');
+      copyNarBtn.type = 'button';
+      copyNarBtn.className = 'btn btn-secondary music-copy-btn';
+      copyNarBtn.textContent = 'Copy Script';
+      copyNarBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(scene.narration);
+          copyNarBtn.textContent = 'Copied!';
+          setTimeout(() => { copyNarBtn.textContent = 'Copy Script'; }, 1400);
+        } catch {}
+      });
+      narLabelRow.appendChild(copyNarBtn);
+      const narText = document.createElement('p');
+      narText.className = 'flow-scene-text';
+      narText.textContent = scene.narration;
+      narBlock.appendChild(narLabelRow);
+      narBlock.appendChild(narText);
+      card.appendChild(narBlock);
+
+      flowScenesListEl.appendChild(card);
     }
   }
 

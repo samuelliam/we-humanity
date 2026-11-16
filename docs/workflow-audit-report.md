@@ -29,15 +29,15 @@ A comprehensive read-only audit was conducted on the live n8n workflow `WH - WF3
 
 ### 1.1 Process & Database State
 - **Process Status**: n8n is running locally under Node.js:
-  - Command: `node n8n start` (PID: `26073`)
+  - Command: `node /Users/admin/.npm-global/bin/n8n start` (PID: `26073`)
   - Task Runner: `node .../@n8n/task-runner/dist/start.js` (PID: `26108`)
   - Port: Listening on `5678` (TCP `*:5678` / `*:rrac`)
-- **Database Location**: `~/.n8n/database.sqlite` (SQLite 3 with active WAL mode).
+- **Database Location**: `/Users/admin/.n8n/database.sqlite` (SQLite 3 with active WAL mode).
 
 ### 1.2 Extraction Commands Executed (Read-Only)
 1. **SQLite Read-Only Direct Query**:
    ```bash
-   sqlite3 "file:~/.n8n/database.sqlite?mode=ro" \
+   sqlite3 "file:/Users/admin/.n8n/database.sqlite?mode=ro" \
      "SELECT id, name, active, createdAt, updatedAt, versionId FROM workflow_entity WHERE id = 'Bnv0SFCD8oerXXhs';"
    ```
    **Output**:
@@ -46,7 +46,7 @@ A comprehensive read-only audit was conducted on the live n8n workflow `WH - WF3
    ```
 2. **n8n CLI Export**:
    ```bash
-   n8n export:workflow --id=Bnv0SFCD8oerXXhs --pretty --output=<state_folder>/live_workflow_cli.json
+   /Users/admin/.npm-global/bin/n8n export:workflow --id=Bnv0SFCD8oerXXhs --pretty --output=<state_folder>/live_workflow_cli.json
    ```
    **Result**: Successfully exported 1 workflow (34 nodes).
 

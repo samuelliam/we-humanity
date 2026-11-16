@@ -3,7 +3,7 @@
 **Author**: `explorer_2` (Asset Verification Explorer)  
 **Date**: 2026-11-13  
 **Integrity Mode**: Read-Only Investigation  
-**Working Directory**: `WE_HUMANITY_ROOT`  
+**Working Directory**: `/Users/admin/Documents/My Workspace/we-humanity-wf3c`  
 **Target Assets**: `assets/rams/slide_1.JPG` through `assets/rams/slide_6.jpg`
 
 ---
@@ -179,7 +179,7 @@ The current slide image set (`assets/rams/slide_1.JPG` through `slide_6.jpg`) su
 1. **Normalize File Extensions in `Save File`**:
    - In `n8n/WF3c-research-slide-images.json`, update the `Save File` node fileName expression:
      ```javascript
-     ={{ 'WE_HUMANITY_ROOT/assets/rams/slide_' + $json.slide_index + '.' + ($binary.data.fileExtension || 'jpg').toLowerCase() }}
+     ={{ '/Users/admin/Documents/My Workspace/we-humanity-wf3c/assets/rams/slide_' + $json.slide_index + '.' + ($binary.data.fileExtension || 'jpg').toLowerCase() }}
      ```
 2. **Enforce Diverse Subject Planning & Reinstate Braun T3**:
    - In `Plan Slides` (Gemini Prompt A), explicitly constrain the 6 slides to distinct products or design facets:

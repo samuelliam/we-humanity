@@ -1,5 +1,7 @@
 # WE, HUMANITY
 
+**Live Instagram:** [@by.wehumanity](https://www.instagram.com/by.wehumanity/)
+
 WE, HUMANITY is an AI-assisted editorial production system for researching, designing, reviewing, and publishing source-backed social carousels about human creativity, engineering, craft, and information design.
 
 It turns a broad editorial brief into a publishable multi-slide story while keeping the process accountable: research is grounded in named sources, images are checked against licence rules, AI-generated visuals are labelled, and a human approval step is required before publication.
@@ -54,7 +56,7 @@ flowchart LR
 
 **Purpose:** Converts an approved story and its verified assets into platform-ready social content.
 
-**How it works:** It polishes carousel and caption copy, selects a slide layout and typography treatment, renders 4–7 `1080 × 1350` SVG slides, converts them to PNGs through the local render service, and prepares captions for Instagram, LinkedIn, and X. The Studio supports previews, reruns, downloads, and publication controls.
+**How it works:** It polishes carousel and caption copy, selects a slide layout and typography treatment, runs deterministic 2D SVG overlap checks, renders 4–7 `1080 × 1350` SVG slides, converts them to PNGs through the local render service, and prepares captions for Instagram, LinkedIn, and X. The Studio supports previews, reruns (`Re-style Carousel`), `.zip` downloads, **Recommended IG Music**, a **Google Flow Reel** tab (per-scene `9:16` video prompts + voiceover script), **Delete**, and direct Instagram publishing via temporary Firebase Storage URLs (with automatic Storage and local `assets/` cleanup after publish).
 
 **Guardrail:** Publication remains behind a human approval step. Publishing status is recorded so retries do not duplicate posts when one platform succeeds and another fails.
 
@@ -78,7 +80,7 @@ The system connects models to bounded tools and stateful business data:
 - **Editorial database:** Airtable
 - **Studio:** Node.js local web application
 - **Rendering:** SVG generation plus a headless-Chrome PNG render service
-- **Publishing:** Instagram Graph API, with architecture for LinkedIn and X distribution
+- **Publishing & Media Hosting:** Instagram Graph API ([@by.wehumanity](https://www.instagram.com/by.wehumanity/)) backed by temporary Firebase Storage URLs, with architecture for LinkedIn and X distribution
 - **Image sources:** Wikimedia Commons, Openverse, and labelled AI-generated fallback imagery
 
 ## Repository guide
@@ -90,6 +92,7 @@ The system connects models to bounded tools and stateful business data:
 | [scripts/](scripts) | Carousel rendering, PNG conversion, and Instagram publishing helpers |
 | [licence-filter.js](licence-filter.js) | Deterministic Wikimedia Commons licence and image-metadata filtering |
 | [docs/WE-HUMANITY.md](docs/WE-HUMANITY.md) | Editorial rules, architecture, and workflow responsibilities |
+| [docs/GOOGLE-FLOW-REELS-GUIDE.md](docs/GOOGLE-FLOW-REELS-GUIDE.md) | Step-by-step guide for producing `9:16` narrated Reels in Google Flow |
 | [docs/fallback-architecture.md](docs/fallback-architecture.md) | Image-source fallback and licensing strategy |
 | [docs/downstream-publishing-architecture.md](docs/downstream-publishing-architecture.md) | Social publishing and failure-handling architecture |
 
@@ -105,17 +108,14 @@ The system connects models to bounded tools and stateful business data:
 ### Start the local tools
 
 ```bash
-# Set the root used by imported n8n workflow paths.
-export WE_HUMANITY_ROOT="$PWD"
-
 # Start the SVG-to-PNG render service on http://127.0.0.1:5690
-npm run render-server
+node scripts/render-server.js
 
 # In another terminal, start the Studio on http://127.0.0.1:5695
-npm run studio
+node app/server.js
 
 # Run the deterministic licence and workflow guard checks
-npm test
+node test.js
 ```
 
 ## Import n8n workflows
