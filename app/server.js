@@ -219,6 +219,59 @@ function suggestMusicForStory({ title, pillar, instagramCaption }) {
   return DEFAULT_MUSIC_TRACKS;
 }
 
+function buildFlowScenesForStory(meta, slideCount) {
+  const title = meta.title || 'WE, HUMANITY';
+  const pillar = meta.pillar || 'Form and function';
+  const metaSlides = Array.isArray(meta.slides) ? meta.slides : [];
+  const sectionLabels = ['Hook & Establishing Shot', 'The Hard Constraint', 'The Mechanism', 'Key Detail', 'Legacy & Takeaway'];
+
+  if (metaSlides.length >= 2) {
+    return metaSlides.map((s, idx) => {
+      const label = idx === metaSlides.length - 1
+        ? 'Legacy & Takeaway'
+        : (sectionLabels[idx] || `Scene ${idx + 1}`);
+      const narration = [s.heading, s.body, idx === metaSlides.length - 1 ? s.cta : '']
+        .filter(Boolean)
+        .join('. ')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*+/g, '')
+        .trim();
+      const visualSubject = String(s.heading || s.body || title).replace(/\*\*([^*]+)\*\*/g, '$1').trim();
+      const prompt = [
+        `9:16 vertical documentary VIDEO CLIP (moving footage, not a still image) for "${title}" (${pillar}), scene ${idx + 1} of ${metaSlides.length} (${label}).`,
+        `Visual subject: ${visualSubject}.`,
+        narration ? `Voiceover narration (calm documentary narrator): "${narration}"` : '',
+        'Camera & style: slow cinematic dolly-in, subtle natural light shifting across authentic materials and craftsmanship, museum-grade realism, no on-screen text, no watermarks.',
+      ].filter(Boolean).join(' ');
+      return { sceneIndex: idx + 1, label, prompt, narration };
+    });
+  }
+
+  const rawCap = String(meta.instagramCaption || title)
+    .replace(/#\S+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const sentences = rawCap.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const totalScenes = Math.max(4, Math.min(5, slideCount || 4));
+  const perScene = Math.max(1, Math.ceil(sentences.length / totalScenes));
+
+  const scenes = [];
+  for (let i = 0; i < totalScenes; i++) {
+    const label = i === totalScenes - 1 ? 'Legacy & Takeaway' : (sectionLabels[i] || `Scene ${i + 1}`);
+    const chunk = sentences.slice(i * perScene, (i + 1) * perScene).join(' ').trim();
+    const narration = chunk || (i === 0 ? title : 'Human ingenuity in form and function.');
+    const visualCue = chunk || title;
+    const prompt = [
+      `9:16 vertical documentary VIDEO CLIP (moving footage, not a still image) for "${title}" (${pillar}), scene ${i + 1} of ${totalScenes} (${label}).`,
+      `Visual subject: ${visualCue}`,
+      narration ? `Voiceover narration (calm documentary narrator): "${narration}"` : '',
+      'Camera & style: slow cinematic dolly-in, subtle natural light shifting across authentic materials and craftsmanship, museum-grade realism, no on-screen text, no watermarks.',
+    ].filter(Boolean).join(' ');
+    scenes.push({ sceneIndex: i + 1, label, prompt, narration });
+  }
+  return scenes;
+}
+
 function getStories() {
   if (!fs.existsSync(RENDERS_DIR)) return [];
   const files = fs.readdirSync(RENDERS_DIR);
@@ -264,6 +317,7 @@ function getStories() {
       recommendedMusic: Array.isArray(meta.recommendedMusic) && meta.recommendedMusic.length
         ? meta.recommendedMusic
         : suggestMusicForStory(meta),
+      flowScenes: buildFlowScenesForStory(meta, slides.length),
       approved: Boolean(meta.approved),
       approvedAt: meta.approvedAt || null,
       instagramPublished: Boolean(meta.instagramPublished),
@@ -787,6 +841,7 @@ const server = http.createServer(async (req, res) => {
         if (body.linkedinCaption && !meta.linkedinCaption) meta.linkedinCaption = body.linkedinCaption;
         if (body.xThread && !meta.xThread) meta.xThread = body.xThread;
         if (Array.isArray(body.credits) && !meta.credits) meta.credits = body.credits;
+        if (Array.isArray(body.slides) && !meta.slides) meta.slides = body.slides;
         if (!meta.renderedAt) meta.renderedAt = new Date().toISOString();
         fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf8');
       }
