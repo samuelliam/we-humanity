@@ -24,6 +24,7 @@ const xPost2El = document.getElementById('x-post-2');
 const slideFilesListEl = document.getElementById('slide-files-list');
 const musicListEl = document.getElementById('music-list');
 const flowScenesListEl = document.getElementById('flow-scenes-list');
+const copyAllFlowScenesBtn = document.getElementById('copy-all-flow-scenes-btn');
 const creditsListEl = document.getElementById('credits-list');
 const liThumbStripEl = document.getElementById('li-thumb-strip');
 const xThumbStripEl = document.getElementById('x-thumb-strip');
@@ -586,6 +587,20 @@ function renderSelectedStory() {
 
   if (flowScenesListEl) {
     const scenes = Array.isArray(story.flowScenes) ? story.flowScenes : [];
+    const formatFlowScene = (sc) => `Scene ${sc.sceneIndex}: ${sc.prompt}\nVoiceover/Narration Line: ${sc.narration}`;
+
+    if (copyAllFlowScenesBtn) {
+      copyAllFlowScenesBtn.disabled = scenes.length === 0;
+      copyAllFlowScenesBtn.onclick = async () => {
+        if (!scenes.length) return;
+        try {
+          await navigator.clipboard.writeText(scenes.map(formatFlowScene).join('\n\n'));
+          copyAllFlowScenesBtn.textContent = 'Copied All!';
+          setTimeout(() => { copyAllFlowScenesBtn.textContent = 'Copy All Scenes'; }, 1500);
+        } catch {}
+      };
+    }
+
     for (const scene of scenes) {
       const card = document.createElement('div');
       card.className = 'flow-scene-card';
@@ -595,7 +610,19 @@ function renderSelectedStory() {
       const titleSpan = document.createElement('span');
       titleSpan.className = 'flow-scene-title';
       titleSpan.textContent = `Scene ${scene.sceneIndex} · ${scene.label}`;
+      const copySceneBtn = document.createElement('button');
+      copySceneBtn.type = 'button';
+      copySceneBtn.className = 'btn btn-secondary music-copy-btn';
+      copySceneBtn.textContent = 'Copy Scene';
+      copySceneBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(formatFlowScene(scene));
+          copySceneBtn.textContent = 'Copied!';
+          setTimeout(() => { copySceneBtn.textContent = 'Copy Scene'; }, 1400);
+        } catch {}
+      });
       head.appendChild(titleSpan);
+      head.appendChild(copySceneBtn);
       card.appendChild(head);
 
       const promptBlock = document.createElement('div');
