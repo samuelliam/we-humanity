@@ -49,9 +49,11 @@ When a story is adapted into a `1080×1350` (4:5 portrait) carousel for Instagra
 - **One idea per slide:** Each slide carries one complete thought in **28 to 35 words** (`22 to 30 words` on the final slide). Sentences never cut off mid-thought with ellipses (`...`).
 
 ### Slide-by-Slide Anatomy
-1. **Slide 1 — Scroll-Stopping Cover:**
+1. **Slide 1 — Scroll-Stopping Cover (Explicit "Form & Function" Identity):**
+   - **Unified Grid Brand:** All carousels use one consistent visual identity—the **`archival-warm`** palette (`#181816` deep charcoal, `#F6F4EF` warm archival paper, `#F5B841` warm gold / `#B45309` amber) and **`editorial-serif`** (`Georgia`) headlines paired with clean sans-serif body copy (`Helvetica Neue` / `Inter`).
+   - **Theme Tag:** Displays `FORM & FUNCTION · WE, HUMANITY` on the cover so the design theme is explicit across the Instagram grid.
    - **Headline (`64px` bold):** A concrete, intriguing 7–12 word hook (e.g., *"Persians moved water 70 km underground with **no pumps**."*) rather than a dry label.
-   - **Subtitle (`29px`):** One crisp sentence (10–16 words) with **no parentheses**.
+   - **Subtitle (`29px`):** One crisp sentence (10–16 words, **no parentheses**) making a clear promise of what the reader will learn by swiping.
    - **Visual:** A bright, iconic, immediately recognizable museum artifact, architectural opening, vintage hardware/interface specimen, or historical subject—never a dark, muddy texture.
    - **Swipe Cue:** A pill badge (`Swipe →`) in the bottom-right corner.
 2. **Slides 2 to N−1 — Value-Driven Body Slides:**
@@ -68,7 +70,7 @@ When a story is adapted into a `1080×1350` (4:5 portrait) carousel for Instagra
 - Enforced both in the editorial prompt and deterministically in code (`highlightBudget = { remaining: 3 }` per slide).
 
 ### Captions
-- **Instagram (`@by.wehumanity`):** Opens with a searchable, keyword-rich first-line hook naming the exact artifact/subject and design discipline, followed by 2 short plain-language paragraphs, a natural save/share cue + question prompt, and **3 to 5 relevant hashtags**.
+- **Instagram (`@by.wehumanity`):** Written for Instagram Search (which matches caption text, not only hashtags): opens with a searchable first-line hook naming the exact artifact, era, and design discipline (e.g., *industrial design, architecture, UI history, craftsmanship*), weaves natural search keywords into 2 short plain-language paragraphs, ends with a clear Save/Share/Comment call to action, and finishes with **3 to 5 relevant hashtags**.
 - **LinkedIn:** Keyword-rich opening line, concise narrative summary, and full per-slide image attributions.
 - **X Thread:** 2-post punchy summary thread.
 

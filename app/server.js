@@ -6,7 +6,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile, execFileSync } = require('child_process');
+const crypto = require('crypto');
 const { loadDotEnv, publishStoryToInstagram } = require('../scripts/instagram-publisher');
+const { getTikTokAuthUrl, exchangeTikTokCode, readTikTokToken, publishStoryToTikTok } = require('../scripts/tiktok-publisher');
 
 loadDotEnv();
 
@@ -219,35 +221,80 @@ function suggestMusicForStory({ title, pillar, instagramCaption }) {
   return DEFAULT_MUSIC_TRACKS;
 }
 
+function sanitizeFlowText(raw) {
+  return String(raw || '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*+/g, '')
+    // Strip possessive named-person prefixes like "Filippo Brunelleschi’s " or "John Harrison's "
+    .replace(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}[’']s\s+/g, 'the ')
+    // Replace common "by/engineer/architect/designer Name Name" patterns with generic artisan/engineer
+    .replace(/\b(architect|engineer|designer|inventor|craftsman|maker|queen|king|emperor)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/gi, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function fitShortVoiceover(raw, maxWords = 17) {
+  const clean = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  const sentences = clean.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const kept = [];
+  let count = 0;
+  for (const s of sentences) {
+    const words = s.split(/\s+/).filter(Boolean).length;
+    if (kept.length === 0 || count + words <= maxWords) {
+      kept.push(s);
+      count += words;
+    } else {
+      break;
+    }
+  }
+  const joined = kept.join(' ');
+  const allWords = joined.split(/\s+/).filter(Boolean);
+  if (allWords.length <= maxWords) return joined;
+  // Trim to maxWords cleanly at punctuation or end
+  const sliced = allWords.slice(0, maxWords).join(' ').replace(/[,;:\-]+$/, '');
+  return /[.!?]$/.test(sliced) ? sliced : `${sliced}.`;
+}
+
 function buildFlowScenesForStory(meta, slideCount) {
-  const title = meta.title || 'WE, HUMANITY';
+  const rawTitle = meta.title || 'WE, HUMANITY';
+  const safeTitle = sanitizeFlowText(rawTitle);
   const pillar = meta.pillar || 'Form and function';
   const metaSlides = Array.isArray(meta.slides) ? meta.slides : [];
   const sectionLabels = ['Hook & Establishing Shot', 'The Hard Constraint', 'The Mechanism', 'Key Detail', 'Legacy & Takeaway'];
+  const cameraMoves = [
+    'wide establishing push-in',
+    'slow lateral tracking shot',
+    'tactile macro close-up',
+    'steady slow pan across craftsmanship',
+    'slow pull-back reveal',
+  ];
 
   if (metaSlides.length >= 2) {
     return metaSlides.map((s, idx) => {
       const label = idx === metaSlides.length - 1
         ? 'Legacy & Takeaway'
         : (sectionLabels[idx] || `Scene ${idx + 1}`);
+      const cam = idx === metaSlides.length - 1 ? cameraMoves[4] : (cameraMoves[idx] || 'slow cinematic dolly-in');
       const narration = [s.heading, s.body, idx === metaSlides.length - 1 ? s.cta : '']
         .filter(Boolean)
         .join('. ')
         .replace(/\*\*([^*]+)\*\*/g, '$1')
         .replace(/\*+/g, '')
         .trim();
-      const visualSubject = String(s.heading || s.body || title).replace(/\*\*([^*]+)\*\*/g, '$1').trim();
+      const visualSubject = sanitizeFlowText(s.heading || s.body || safeTitle);
+      const safeNarration = fitShortVoiceover(sanitizeFlowText(narration), 17);
       const prompt = [
-        `9:16 vertical documentary VIDEO CLIP (moving footage, not a still image) for "${title}" (${pillar}), scene ${idx + 1} of ${metaSlides.length} (${label}).`,
-        `Visual subject: ${visualSubject}.`,
-        narration ? `Voiceover narration (calm documentary narrator): "${narration}"` : '',
-        'Camera & style: slow cinematic dolly-in, subtle natural light shifting across authentic materials and craftsmanship, museum-grade realism, no on-screen text, no watermarks.',
+        `9:16 vertical documentary VIDEO CLIP (moving footage, not a still image) for "${safeTitle}" (${pillar}), scene ${idx + 1} of ${metaSlides.length} (${label}).`,
+        `Visual subject: ${visualSubject}. Focus strictly on the artifact, architecture, materials, and anonymous artisan hands—no named or recognizable real-world people.`,
+        safeNarration ? `Voiceover narration (speak briskly within 7 seconds): "${safeNarration}"` : '',
+        `Camera & style: ${cam}, subtle natural light shifting across authentic materials and craftsmanship, museum-grade realism, subtle ambient room acoustics (no background music), no on-screen text, no subtitles, no watermarks.`,
       ].filter(Boolean).join(' ');
       return { sceneIndex: idx + 1, label, prompt, narration };
     });
   }
 
-  const rawCap = String(meta.instagramCaption || title)
+  const rawCap = String(meta.instagramCaption || rawTitle)
     .replace(/#\S+/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -258,14 +305,16 @@ function buildFlowScenesForStory(meta, slideCount) {
   const scenes = [];
   for (let i = 0; i < totalScenes; i++) {
     const label = i === totalScenes - 1 ? 'Legacy & Takeaway' : (sectionLabels[i] || `Scene ${i + 1}`);
+    const cam = i === totalScenes - 1 ? cameraMoves[4] : (cameraMoves[i] || 'slow cinematic dolly-in');
     const chunk = sentences.slice(i * perScene, (i + 1) * perScene).join(' ').trim();
-    const narration = chunk || (i === 0 ? title : 'Human ingenuity in form and function.');
-    const visualCue = chunk || title;
+    const narration = chunk || (i === 0 ? rawTitle : 'Human ingenuity in form and function.');
+    const visualCue = sanitizeFlowText(chunk || safeTitle);
+    const safeNarration = fitShortVoiceover(sanitizeFlowText(narration), 17);
     const prompt = [
-      `9:16 vertical documentary VIDEO CLIP (moving footage, not a still image) for "${title}" (${pillar}), scene ${i + 1} of ${totalScenes} (${label}).`,
-      `Visual subject: ${visualCue}`,
-      narration ? `Voiceover narration (calm documentary narrator): "${narration}"` : '',
-      'Camera & style: slow cinematic dolly-in, subtle natural light shifting across authentic materials and craftsmanship, museum-grade realism, no on-screen text, no watermarks.',
+      `9:16 vertical documentary VIDEO CLIP (moving footage, not a still image) for "${safeTitle}" (${pillar}), scene ${i + 1} of ${totalScenes} (${label}).`,
+      `Visual subject: ${visualCue}. Focus strictly on the artifact, architecture, materials, and anonymous artisan hands—no named or recognizable real-world people.`,
+      safeNarration ? `Voiceover narration (speak briskly within 7 seconds): "${safeNarration}"` : '',
+      `Camera & style: ${cam}, subtle natural light shifting across authentic materials and craftsmanship, museum-grade realism, subtle ambient room acoustics (no background music), no on-screen text, no subtitles, no watermarks.`,
     ].filter(Boolean).join(' ');
     scenes.push({ sceneIndex: i + 1, label, prompt, narration });
   }
@@ -323,6 +372,8 @@ function getStories() {
       instagramPublished: Boolean(meta.instagramPublished),
       instagramPermalink: meta.instagramPermalink || null,
       instagramPublishedAt: meta.instagramPublishedAt || null,
+      tiktokPublished: Boolean(meta.tiktokPublished),
+      tiktokStatus: meta.tiktokStatus || null,
       renderedAt: meta.renderedAt || new Date(latestMtime).toISOString(),
       executionId: meta.executionId || null,
       slides,
@@ -849,6 +900,59 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { error: err.message || 'Instagram publish failed' });
+    }
+  }
+
+  if (req.method === 'GET' && pathname === '/api/tiktok/status') {
+    loadDotEnv();
+    const tok = readTikTokToken();
+    return sendJson(res, 200, {
+      configured: Boolean(process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET),
+      connected: Boolean(tok && tok.access_token),
+    });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/tiktok/auth') {
+    try {
+      const redirectUri = process.env.TIKTOK_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/tiktok/callback`;
+      const state = crypto.randomBytes(12).toString('hex');
+      const authUrl = getTikTokAuthUrl(redirectUri, state);
+      res.writeHead(302, { Location: authUrl });
+      return res.end();
+    } catch (err) {
+      return sendJson(res, 500, { error: err.message || 'TikTok auth URL failed' });
+    }
+  }
+
+  if (req.method === 'GET' && pathname === '/api/tiktok/callback') {
+    const code = url.searchParams.get('code');
+    const errDesc = url.searchParams.get('error_description') || url.searchParams.get('error');
+    if (errDesc || !code) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(`<p>TikTok authorization failed: ${errDesc || 'Missing code'}</p><p><a href="/">Back to Studio</a></p>`);
+    }
+    try {
+      const redirectUri = process.env.TIKTOK_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/tiktok/callback`;
+      await exchangeTikTokCode(code, redirectUri);
+      res.writeHead(302, { Location: '/' });
+      return res.end();
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(`<p>TikTok token exchange failed: ${err.message}</p><p><a href="/">Back to Studio</a></p>`);
+    }
+  }
+
+  const publishTtMatch = req.method === 'POST' && pathname.match(/^\/api\/stories\/([^/]+)\/publish-tiktok$/);
+  if (publishTtMatch) {
+    const cleanId = String(publishTtMatch[1] || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const hasSlides = fs.existsSync(RENDERS_DIR) && fs.readdirSync(RENDERS_DIR).some((f) => f.startsWith(`${cleanId}_slide_`));
+    if (!hasSlides) return sendJson(res, 404, { error: 'Story slides not found' });
+    try {
+      const body = await readJsonBody(req);
+      const result = await publishStoryToTikTok(cleanId, { force: Boolean(body.force) });
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, 500, { error: err.message || 'TikTok publish failed' });
     }
   }
 

@@ -488,6 +488,11 @@ function renderSelectedStory() {
     publishIgBtn.disabled = Boolean(story.instagramPublished);
     publishIgBtn.title = story.instagramPermalink ? `Published: ${story.instagramPermalink}` : 'Upload slides to Firebase Storage and publish carousel to @by.wehumanity';
   }
+  if (publishTtBtn) {
+    publishTtBtn.textContent = story.tiktokPublished ? 'Sent to TikTok ✓' : 'Send to TikTok';
+    publishTtBtn.classList.toggle('btn-approved', Boolean(story.tiktokPublished));
+    publishTtBtn.disabled = Boolean(story.tiktokPublished);
+  }
   igPillarSubEl.textContent = story.pillar || 'Design & Engineering';
 
   igCaptionEl.textContent = story.instagramCaption || '(No Instagram caption recorded)';
@@ -704,6 +709,8 @@ const rerenderBtn = document.getElementById('rerender-btn');
 const stopPipelineBtn = document.getElementById('stop-pipeline-btn');
 const approveStoryBtn = document.getElementById('approve-story-btn');
 const publishIgBtn = document.getElementById('publish-ig-btn');
+const publishTtBtn = document.getElementById('publish-tt-btn');
+const connectTiktokBtn = document.getElementById('connect-tiktok-btn');
 const exportZipBtn = document.getElementById('export-zip-btn');
 const deleteStoryBtn = document.getElementById('delete-story-btn');
 
@@ -823,6 +830,59 @@ if (publishIgBtn) {
     }
   });
 }
+
+if (publishTtBtn) {
+  publishTtBtn.addEventListener('click', async () => {
+    if (!selectedStoryId) return;
+    publishTtBtn.disabled = true;
+    publishTtBtn.textContent = 'Sending…';
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(selectedStoryId)}/publish-tiktok`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        pipelineBadgeEl.dataset.state = 'error';
+        pipelineBadgeEl.textContent = 'TikTok Error';
+        pipelineSummaryEl.dataset.error = 'true';
+        pipelineSummaryEl.textContent = data.error || 'Failed to send to TikTok.';
+        publishTtBtn.disabled = false;
+        publishTtBtn.textContent = 'Send to TikTok';
+        return;
+      }
+      pipelineBadgeEl.dataset.state = 'done';
+      pipelineBadgeEl.textContent = 'TikTok Sent';
+      pipelineSummaryEl.dataset.error = 'false';
+      pipelineSummaryEl.textContent = `Sent carousel to TikTok (${data.status || 'INBOX'}).`;
+      await loadAll();
+    } catch (err) {
+      pipelineBadgeEl.dataset.state = 'error';
+      pipelineBadgeEl.textContent = 'TikTok Error';
+      pipelineSummaryEl.dataset.error = 'true';
+      pipelineSummaryEl.textContent = err.message || 'Network error sending to TikTok.';
+      publishTtBtn.disabled = false;
+      publishTtBtn.textContent = 'Send to TikTok';
+    }
+  });
+}
+
+(async function checkTikTokConnection() {
+  if (!connectTiktokBtn) return;
+  try {
+    const res = await fetch('/api/tiktok/status');
+    const data = await res.json().catch(() => ({}));
+    if (data.configured && !data.connected) {
+      connectTiktokBtn.hidden = false;
+    } else if (data.connected) {
+      connectTiktokBtn.hidden = false;
+      connectTiktokBtn.textContent = 'TikTok ✓';
+      connectTiktokBtn.removeAttribute('href');
+      connectTiktokBtn.classList.add('btn-approved');
+    }
+  } catch {}
+})();
 
 if (deleteStoryBtn) {
   deleteStoryBtn.addEventListener('click', async () => {
