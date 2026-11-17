@@ -910,9 +910,17 @@ body {
 }
 
 .flow-guide-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
   padding-bottom: 0.9rem;
   margin-bottom: 1rem;
   border-bottom: 1px solid var(--border);
+}
+
+.flow-guide-banner .btn {
+  flex-shrink: 0;
 }
 
 .flow-guide-steps {

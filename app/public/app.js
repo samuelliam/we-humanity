@@ -24,6 +24,7 @@ const xPost2El = document.getElementById('x-post-2');
 const slideFilesListEl = document.getElementById('slide-files-list');
 const musicListEl = document.getElementById('music-list');
 const flowScenesListEl = document.getElementById('flow-scenes-list');
+const copyAllFlowScenesBtn = document.getElementById('copy-all-flow-scenes-btn');
 const creditsListEl = document.getElementById('credits-list');
 const liThumbStripEl = document.getElementById('li-thumb-strip');
 const xThumbStripEl = document.getElementById('x-thumb-strip');
@@ -487,6 +488,11 @@ function renderSelectedStory() {
     publishIgBtn.disabled = Boolean(story.instagramPublished);
     publishIgBtn.title = story.instagramPermalink ? `Published: ${story.instagramPermalink}` : 'Upload slides to Firebase Storage and publish carousel to @by.wehumanity';
   }
+  if (publishTtBtn) {
+    publishTtBtn.textContent = story.tiktokPublished ? 'Sent to TikTok ✓' : 'Send to TikTok';
+    publishTtBtn.classList.toggle('btn-approved', Boolean(story.tiktokPublished));
+    publishTtBtn.disabled = Boolean(story.tiktokPublished);
+  }
   igPillarSubEl.textContent = story.pillar || 'Design & Engineering';
 
   igCaptionEl.textContent = story.instagramCaption || '(No Instagram caption recorded)';
@@ -586,6 +592,20 @@ function renderSelectedStory() {
 
   if (flowScenesListEl) {
     const scenes = Array.isArray(story.flowScenes) ? story.flowScenes : [];
+    const formatFlowScene = (sc) => `Scene ${sc.sceneIndex}: ${sc.prompt}\nVoiceover/Narration Line: ${sc.narration}`;
+
+    if (copyAllFlowScenesBtn) {
+      copyAllFlowScenesBtn.disabled = scenes.length === 0;
+      copyAllFlowScenesBtn.onclick = async () => {
+        if (!scenes.length) return;
+        try {
+          await navigator.clipboard.writeText(scenes.map(formatFlowScene).join('\n\n'));
+          copyAllFlowScenesBtn.textContent = 'Copied All!';
+          setTimeout(() => { copyAllFlowScenesBtn.textContent = 'Copy All Scenes'; }, 1500);
+        } catch {}
+      };
+    }
+
     for (const scene of scenes) {
       const card = document.createElement('div');
       card.className = 'flow-scene-card';
@@ -595,7 +615,19 @@ function renderSelectedStory() {
       const titleSpan = document.createElement('span');
       titleSpan.className = 'flow-scene-title';
       titleSpan.textContent = `Scene ${scene.sceneIndex} · ${scene.label}`;
+      const copySceneBtn = document.createElement('button');
+      copySceneBtn.type = 'button';
+      copySceneBtn.className = 'btn btn-secondary music-copy-btn';
+      copySceneBtn.textContent = 'Copy Scene';
+      copySceneBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(formatFlowScene(scene));
+          copySceneBtn.textContent = 'Copied!';
+          setTimeout(() => { copySceneBtn.textContent = 'Copy Scene'; }, 1400);
+        } catch {}
+      });
       head.appendChild(titleSpan);
+      head.appendChild(copySceneBtn);
       card.appendChild(head);
 
       const promptBlock = document.createElement('div');
@@ -677,6 +709,8 @@ const rerenderBtn = document.getElementById('rerender-btn');
 const stopPipelineBtn = document.getElementById('stop-pipeline-btn');
 const approveStoryBtn = document.getElementById('approve-story-btn');
 const publishIgBtn = document.getElementById('publish-ig-btn');
+const publishTtBtn = document.getElementById('publish-tt-btn');
+const connectTiktokBtn = document.getElementById('connect-tiktok-btn');
 const exportZipBtn = document.getElementById('export-zip-btn');
 const deleteStoryBtn = document.getElementById('delete-story-btn');
 
@@ -796,6 +830,59 @@ if (publishIgBtn) {
     }
   });
 }
+
+if (publishTtBtn) {
+  publishTtBtn.addEventListener('click', async () => {
+    if (!selectedStoryId) return;
+    publishTtBtn.disabled = true;
+    publishTtBtn.textContent = 'Sending…';
+    try {
+      const res = await fetch(`/api/stories/${encodeURIComponent(selectedStoryId)}/publish-tiktok`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        pipelineBadgeEl.dataset.state = 'error';
+        pipelineBadgeEl.textContent = 'TikTok Error';
+        pipelineSummaryEl.dataset.error = 'true';
+        pipelineSummaryEl.textContent = data.error || 'Failed to send to TikTok.';
+        publishTtBtn.disabled = false;
+        publishTtBtn.textContent = 'Send to TikTok';
+        return;
+      }
+      pipelineBadgeEl.dataset.state = 'done';
+      pipelineBadgeEl.textContent = 'TikTok Sent';
+      pipelineSummaryEl.dataset.error = 'false';
+      pipelineSummaryEl.textContent = `Sent carousel to TikTok (${data.status || 'INBOX'}).`;
+      await loadAll();
+    } catch (err) {
+      pipelineBadgeEl.dataset.state = 'error';
+      pipelineBadgeEl.textContent = 'TikTok Error';
+      pipelineSummaryEl.dataset.error = 'true';
+      pipelineSummaryEl.textContent = err.message || 'Network error sending to TikTok.';
+      publishTtBtn.disabled = false;
+      publishTtBtn.textContent = 'Send to TikTok';
+    }
+  });
+}
+
+(async function checkTikTokConnection() {
+  if (!connectTiktokBtn) return;
+  try {
+    const res = await fetch('/api/tiktok/status');
+    const data = await res.json().catch(() => ({}));
+    if (data.configured && !data.connected) {
+      connectTiktokBtn.hidden = false;
+    } else if (data.connected) {
+      connectTiktokBtn.hidden = false;
+      connectTiktokBtn.textContent = 'TikTok ✓';
+      connectTiktokBtn.removeAttribute('href');
+      connectTiktokBtn.classList.add('btn-approved');
+    }
+  } catch {}
+})();
 
 if (deleteStoryBtn) {
   deleteStoryBtn.addEventListener('click', async () => {

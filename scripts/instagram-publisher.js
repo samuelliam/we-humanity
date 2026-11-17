@@ -351,5 +351,9 @@ async function publishStoryToInstagram(rawStoryId, options = {}) {
 
 module.exports = {
   loadDotEnv,
+  loadServiceAccount,
+  getGoogleAccessToken,
+  uploadBufferToFirebaseStorage,
+  deleteFromFirebaseStorage,
   publishStoryToInstagram,
 };
