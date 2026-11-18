@@ -1,0 +1,29 @@
+{
+  "hosting": {
+    "public": "hosting",
+    "trailingSlash": false,
+    "rewrites": [
+      {
+        "source": "/tiktok3mSNCe9XtwvMJvsrLbaP3Es27EtMA9VA.txt/**",
+        "destination": "/tiktok3mSNCe9XtwvMJvsrLbaP3Es27EtMA9VA.txt"
+      },
+      {
+        "source": "/tiktokQudoAFGL1p3gCk8erA4wbzKsRO5nAXwZ.txt/**",
+        "destination": "/tiktokQudoAFGL1p3gCk8erA4wbzKsRO5nAXwZ.txt"
+      },
+      {
+        "source": "/tiktokz1HxvM1xXxVwX5NiydxIBLByo5hsOPVS.txt/**",
+        "destination": "/tiktokz1HxvM1xXxVwX5NiydxIBLByo5hsOPVS.txt"
+      },
+      {
+        "source": "/tiktok5wUuZD710nWvrt4hqakTYfdQV2Ldg3Ys.txt/**",
+        "destination": "/tiktok5wUuZD710nWvrt4hqakTYfdQV2Ldg3Ys.txt"
+      }
+    ],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

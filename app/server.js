@@ -933,7 +933,8 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const redirectUri = process.env.TIKTOK_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/tiktok/callback`;
-      await exchangeTikTokCode(code, redirectUri);
+      const state = url.searchParams.get('state') || '';
+      await exchangeTikTokCode(code, redirectUri, state);
       res.writeHead(302, { Location: '/' });
       return res.end();
     } catch (err) {

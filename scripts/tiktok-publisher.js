@@ -41,21 +41,33 @@ function saveTikTokToken(data) {
   return saved;
 }
 
+const pendingPkce = new Map();
+
+function generatePkcePair() {
+  const verifier = crypto.randomBytes(32).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  return { verifier, challenge };
+}
+
 function getTikTokAuthUrl(redirectUri, state) {
   loadDotEnv();
   const clientKey = process.env.TIKTOK_CLIENT_KEY || '';
   if (!clientKey) throw new Error('Missing TIKTOK_CLIENT_KEY in .env');
+  const { verifier, challenge } = generatePkcePair();
+  pendingPkce.set(state, verifier);
   const params = new URLSearchParams({
     client_key: clientKey,
     scope: process.env.TIKTOK_SCOPES || 'user.info.basic,video.upload,video.publish',
     response_type: 'code',
     redirect_uri: redirectUri,
     state,
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
   });
   return `https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`;
 }
 
-async function exchangeTikTokCode(code, redirectUri) {
+async function exchangeTikTokCode(code, redirectUri, state) {
   loadDotEnv();
   const clientKey = process.env.TIKTOK_CLIENT_KEY || '';
   const clientSecret = process.env.TIKTOK_CLIENT_SECRET || '';
@@ -63,16 +75,24 @@ async function exchangeTikTokCode(code, redirectUri) {
     throw new Error('Missing TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET in .env');
   }
 
+  const codeVerifier = state ? pendingPkce.get(state) : null;
+  if (state) pendingPkce.delete(state);
+
+  const formParams = {
+    client_key: clientKey,
+    client_secret: clientSecret,
+    code,
+    grant_type: 'authorization_code',
+    redirect_uri: redirectUri,
+  };
+  if (codeVerifier) {
+    formParams.code_verifier = codeVerifier;
+  }
+
   const res = await fetch(`${TIKTOK_API_BASE}/oauth/token/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_key: clientKey,
-      client_secret: clientSecret,
-      code,
-      grant_type: 'authorization_code',
-      redirect_uri: redirectUri,
-    }),
+    body: new URLSearchParams(formParams),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.error || !data.access_token) {
