@@ -4,6 +4,10 @@
     "trailingSlash": false,
     "rewrites": [
       {
+        "source": "/tiktokhvq343olAGE0bK8yV9Q14YEvnNsH1cRb.txt/**",
+        "destination": "/tiktokhvq343olAGE0bK8yV9Q14YEvnNsH1cRb.txt"
+      },
+      {
         "source": "/tiktok3mSNCe9XtwvMJvsrLbaP3Es27EtMA9VA.txt/**",
         "destination": "/tiktok3mSNCe9XtwvMJvsrLbaP3Es27EtMA9VA.txt"
       },
